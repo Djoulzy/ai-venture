@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "id": "the_last_lighthouse",
+  "title": "The Last Lighthouse",
+  "introduction": "1987. A storm has cut power to the island. Offshore, a ship is drifting towards the reefs. Find the keeper's equipment and relight the lighthouse beacon.",
+  "start": "quay",
+  "locations": {
+    "quay": {
+      "name": "The deserted quay",
+      "description": "Mooring ropes creak in the fog. The lighthouse rises to the north; to the east, the keeper's workshop stands against the gale.",
+      "exits": {"north": {"to": "hall"}, "east": {"to": "workshop"}}
+    },
+    "workshop": {
+      "name": "The keeper's workshop",
+      "description": "The smell of grease clings to the wood. A notice on the workbench reads: 'Backup battery: beacon power supply'. The quay lies to the west.",
+      "exits": {"west": {"to": "quay"}}
+    },
+    "hall": {
+      "name": "The lighthouse hall",
+      "description": "A spiral staircase leads up to the lantern room. A copper door guards the way. The surf echoes behind you, to the south.",
+      "exits": {
+        "south": {"to": "quay"},
+        "up": {"to": "lantern_room", "conditions": [{"flag": "door_open", "value": true}], "blocked_message": "The copper door is locked. Its small lock needs a key."}
+      }
+    },
+    "lantern_room": {
+      "name": "The lantern room",
+      "description": "Beyond the rain-streaked windows, reefs break the surface. A beacon with a battery socket stands in the centre of the room. The stairs lead down to the hall.",
+      "exits": {"down": {"to": "hall"}}
+    }
+  },
+  "items": {
+    "key": {"name": "the copper key", "description": "A small copper key. Its tag reads 'stairs'.", "portable": true, "location": "quay"},
+    "battery": {"name": "the backup battery", "description": "A charged battery, light enough to carry. Its contacts fit the beacon's battery socket.", "portable": true, "location": "workshop"},
+    "door": {"name": "the copper door", "description": "A heavy door guards the staircase. Its lock is made of copper.", "portable": false, "location": "hall"},
+    "beacon": {"name": "the lighthouse beacon", "description": "An emergency beacon with a battery socket. Its beam can guide the ship away from the reefs.", "portable": false, "location": "lantern_room"}
+  },
+  "flags": {"door_open": false, "beacon_lit": false},
+  "rules": [
+    {
+      "id": "unlock_door", "tool": "key", "target": "door", "location": "hall",
+      "conditions": [{"flag": "door_open", "value": false}],
+      "effects": {"door_open": true},
+      "message": "The key turns in the lock. The door opens, giving you access to the stairs.",
+      "blocked_message": "The door is already open."
+    },
+    {
+      "id": "light_beacon", "tool": "battery", "target": "beacon", "location": "lantern_room",
+      "conditions": [{"flag": "door_open", "value": true}, {"flag": "beacon_lit", "value": false}],
+      "effects": {"beacon_lit": true},
+      "message": "You charge the beacon with the backup battery, then take the battery back. The beam comes to life; offshore, the ship steers clear of the reefs.",
+      "blocked_message": "The beacon is already lit, or the way to it has not been unlocked."
+    }
+  ],
+  "goal": [{"flag": "beacon_lit", "value": true}]
+}

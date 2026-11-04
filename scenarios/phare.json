@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "id": "le_dernier_phare",
+  "title": "Le dernier phare",
+  "introduction": "1987. La tempête a coupé le courant sur l'île. Au large, un navire approche des récifs. Retrouvez le matériel du gardien et rallumez la balise du phare.",
+  "start": "quai",
+  "locations": {
+    "quai": {
+      "name": "Le quai désert",
+      "description": "Les amarres grincent dans le brouillard. Au nord se dresse le phare ; à l'est, l'atelier du gardien résiste aux rafales.",
+      "exits": {"nord": {"to": "vestibule"}, "est": {"to": "atelier"}}
+    },
+    "atelier": {
+      "name": "L'atelier du gardien",
+      "description": "L'odeur de graisse imprègne le bois. Une inscription sur l'établi indique : « Batterie de secours : alimentation de la balise ». Le quai est à l'ouest.",
+      "exits": {"ouest": {"to": "quai"}}
+    },
+    "vestibule": {
+      "name": "Le vestibule du phare",
+      "description": "Un escalier en colimaçon monte vers la lanterne. Une porte de cuivre en garde l'accès. Le ressac résonne derrière vous, au sud.",
+      "exits": {
+        "sud": {"to": "quai"},
+        "haut": {"to": "lanterne", "conditions": [{"flag": "porte_ouverte", "value": true}], "blocked_message": "La porte de cuivre est verrouillée. Une petite serrure attend sa clé."}
+      }
+    },
+    "lanterne": {
+      "name": "La chambre de la lanterne",
+      "description": "Derrière les vitres striées de pluie, les récifs affleurent. Une balise et son logement pour batterie occupent le centre de la pièce. L'escalier redescend vers le vestibule.",
+      "exits": {"bas": {"to": "vestibule"}}
+    }
+  },
+  "items": {
+    "cle": {"name": "la clé de cuivre", "description": "Une petite clé de cuivre. Son étiquette porte le mot « escalier ».", "portable": true, "location": "quai"},
+    "batterie": {"name": "la batterie de secours", "description": "Une batterie chargée, assez légère pour être transportée. Ses contacts correspondent au logement de la balise.", "portable": true, "location": "atelier"},
+    "porte": {"name": "la porte de cuivre", "description": "Une porte massive protège l'escalier. Sa serrure est en cuivre.", "portable": false, "location": "vestibule"},
+    "balise": {"name": "la balise du phare", "description": "Une balise de secours munie d'un logement pour batterie. Son faisceau peut guider le navire loin des récifs.", "portable": false, "location": "lanterne"}
+  },
+  "flags": {"porte_ouverte": false, "balise_allumee": false},
+  "rules": [
+    {
+      "id": "ouvrir_porte", "tool": "cle", "target": "porte", "location": "vestibule",
+      "conditions": [{"flag": "porte_ouverte", "value": false}],
+      "effects": {"porte_ouverte": true},
+      "message": "La clé tourne dans la serrure. La porte s'ouvre : l'escalier est maintenant accessible.",
+      "blocked_message": "La porte est déjà ouverte."
+    },
+    {
+      "id": "allumer_balise", "tool": "batterie", "target": "balise", "location": "lanterne",
+      "conditions": [{"flag": "porte_ouverte", "value": true}, {"flag": "balise_allumee", "value": false}],
+      "effects": {"balise_allumee": true},
+      "message": "Vous rechargez la balise avec la batterie de secours, puis reprenez la batterie. Le faisceau s'allume ; au large, le navire s'écarte des récifs.",
+      "blocked_message": "La balise est déjà allumée ou son accès n'est pas déverrouillé."
+    }
+  ],
+  "goal": [{"flag": "balise_allumee", "value": true}]
+}
