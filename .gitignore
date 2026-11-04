@@ -36,6 +36,7 @@ go.work.sum
 # Local game artifacts
 /aventure
 /bin/
+/dist/
 /sauvegarde*.json
 /savegame*.json
 /.ai-venture-save-*

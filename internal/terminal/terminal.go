@@ -4,13 +4,13 @@ package terminal
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"strings"
 	"time"
 	"unicode"
 
 	"ai-venture/internal/engine"
+	"ai-venture/internal/illustration"
 	"ai-venture/internal/language"
 	"ai-venture/internal/locale"
 	"ai-venture/internal/persistence"
@@ -19,13 +19,16 @@ import (
 type Session struct {
 	Engine       *engine.Engine
 	Interpreter  language.Interpreter
-	Narrator     language.Narrator // nil selects canonical descriptions only
+	Narrator     language.Narrator        // nil selects canonical descriptions only
+	Illustrator  illustration.Illustrator // nil disables location art
 	Input        io.Reader
 	Output       io.Writer
+	Color        bool // resolved by NewPrinter; the zero value keeps output plain
 	SavePath     string
 	Timeout      time.Duration
 	Title        string
 	Introduction string
+	artCache     map[string]cachedIllustration
 }
 
 const help = `Game commands (examples):
@@ -36,6 +39,8 @@ Local commands: help | save | load | quit
 In LLM mode, describe your actions freely in English.
 Prefix a command with / to use the local grammar without the LLM.
 Use the IDs in square brackets to identify items unambiguously.`
+
+const artHelp = "Illustration: art generates or shows the current sketch (LLM; no turn). /art only shows a cached sketch."
 
 // safe prevents model or scenario text from emitting terminal control sequences.
 func safe(s string) string {
@@ -48,26 +53,30 @@ func safe(s string) string {
 }
 
 func (s *Session) print(format string, args ...any) {
+	s.printStyle(StylePlain, format, args...)
+}
+
+func (s *Session) printStyle(style Style, format string, args ...any) {
 	for i, arg := range args {
 		if err, ok := arg.(error); ok {
 			args[i] = s.Engine.Language().Error(err)
 		}
 	}
-	_, _ = fmt.Fprintln(s.Output, safe(s.Engine.Language().Text(format, args...)))
+	Printer{Output: s.Output, Color: s.Color}.Println(style, s.Engine.Language().Text(format, args...))
 }
 
 func (s *Session) showView() {
 	v := s.Engine.View()
-	s.print("\n— %s —", v.Name)
+	s.printStyle(StyleLocation, "\n— %s —", v.Name)
 	s.print("%s", v.Description)
 	items := []string{}
 	for _, item := range v.Items {
 		items = append(items, item.Name+" ["+item.ID+"]")
 	}
 	if len(items) == 0 {
-		s.print("Items here: none.")
+		s.printStyle(StyleObject, "Items here: none.")
 	} else {
-		s.print("Items here: %s.", strings.Join(items, ", "))
+		s.printStyle(StyleObject, "Items here: %s.", strings.Join(items, ", "))
 	}
 	exits := []string{}
 	for _, exit := range v.Exits {
@@ -78,12 +87,12 @@ func (s *Session) showView() {
 		exits = append(exits, label)
 	}
 	if len(exits) == 0 {
-		s.print("Exits: none.")
+		s.printStyle(StyleExit, "Exits: none.")
 	} else {
-		s.print("Exits: %s.", strings.Join(exits, " ; "))
+		s.printStyle(StyleExit, "Exits: %s.", strings.Join(exits, " ; "))
 	}
 	if v.Completed {
-		s.print("Objective complete: the adventure is over. You can still explore or save.")
+		s.printStyle(StyleSuccess, "Objective complete: the adventure is over. You can still explore or save.")
 	}
 }
 
@@ -95,36 +104,38 @@ func (s *Session) narrate(ctx context.Context, result engine.Result) {
 	defer cancel()
 	text, err := s.Narrator.Narrate(narrationCtx, result)
 	if err != nil {
-		s.print("[Narration unavailable; the engine facts still apply.]")
+		s.printStyle(StyleWarning, "[Narration unavailable; the engine facts still apply.]")
 		return
 	}
-	s.print("\nAtmosphere: %s", text)
+	s.printStyle(StyleNarration, "\nAtmosphere: %s", text)
 }
 
 func (s *Session) Run(ctx context.Context) error {
 	if s.Engine == nil || s.Interpreter == nil || s.Input == nil || s.Output == nil || s.Timeout <= 0 || s.SavePath == "" {
 		return locale.Errorf("session configuration is incomplete")
 	}
-	s.print("\n%s\n%s", s.Title, s.Introduction)
-	s.print("Type help for commands. Save file: %s", s.SavePath)
+	s.printStyle(StyleTitle, "\n%s", s.Title)
+	s.print("%s", s.Introduction)
+	s.printStyle(StyleInfo, "Type help for commands. Save file: %s", s.SavePath)
 	s.showView()
+	s.illustrate(ctx, true)
 	s.narrate(ctx, engine.Result{Action: engine.Action{Kind: "observe"}, Message: s.Engine.View().Description, View: s.Engine.View()})
 	reader := bufio.NewReader(s.Input)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		_, _ = fmt.Fprint(s.Output, "\n> ")
+		Printer{Output: s.Output, Color: s.Color}.Print(StylePrompt, "\n> ")
 		line, err := readCommand(reader)
 		if err == io.EOF {
-			s.print("Goodbye.")
+			s.printStyle(StyleInfo, "Goodbye.")
 			return nil
 		}
 		if err != nil {
 			return err
 		}
 		if len(line) > language.MaxCommandBytes {
-			s.print("Command is too long (maximum %d bytes).", language.MaxCommandBytes)
+			s.printStyle(StyleError, "Command is too long (maximum %d bytes).", language.MaxCommandBytes)
 			continue
 		}
 		line = strings.TrimSpace(line)
@@ -144,27 +155,38 @@ func (s *Session) Run(ctx context.Context) error {
 				command = "load"
 			case "quitter":
 				command = "quit"
+			case "dessin":
+				command = "art"
 			}
 		}
 		switch command {
 		case "help", "?":
 			s.print("%s", s.Engine.Language().Text(help))
+			s.print("%s", s.Engine.Language().Text(artHelp))
+			continue
+		case "art":
+			if s.Illustrator == nil {
+				s.printStyle(StyleInfo, "Illustrations are disabled; use -art in LLM mode.")
+			} else {
+				s.illustrate(ctx, !local)
+			}
 			continue
 		case "quit", "exit":
-			s.print("Goodbye. Use save before quitting to keep your progress.")
+			s.printStyle(StyleInfo, "Goodbye. Use save before quitting to keep your progress.")
 			return nil
 		case "save":
 			if err := persistence.Save(s.SavePath, s.Engine); err != nil {
-				s.print("Save failed: %v", err)
+				s.printStyle(StyleError, "Save failed: %v", err)
 			} else {
-				s.print("Game saved.")
+				s.printStyle(StyleSuccess, "Game saved.")
 			}
 			continue
 		case "load":
 			if err := persistence.Load(s.SavePath, s.Engine); err != nil {
-				s.print("Load failed: %v", err)
+				s.printStyle(StyleError, "Load failed: %v", err)
 			} else {
-				s.print("Game loaded.")
+				s.printStyle(StyleSuccess, "Game loaded.")
+				s.artCache = nil
 				s.showView()
 			}
 			continue
@@ -187,25 +209,30 @@ func (s *Session) Run(ctx context.Context) error {
 		action, err := interpreter.Interpret(actionCtx, line, view)
 		cancel()
 		if err != nil {
-			s.print("Could not interpret command: %v\nNo action applied. Try /help or a local command such as /look.", err)
+			s.printStyle(StyleError, "Could not interpret command: %v\nNo action applied. Try /help or a local command such as /look.", err)
 			continue
 		}
 		result, err := s.Engine.Apply(action)
 		if err != nil {
-			s.print("Action refused: %v", err)
+			s.printStyle(StyleWarning, "Action refused: %v", err)
 			continue
 		}
-		s.print("Fact: %s", result.Message)
+		s.printStyle(StyleFact, "Fact: %s", result.Message)
 		if action.Kind == "inventory" {
 			for _, item := range result.View.Inventory {
-				s.print("  %s [%s]", item.Name, item.ID)
+				s.printStyle(StyleObject, "  %s [%s]", item.Name, item.ID)
 			}
 		}
 		if action.Kind == "move" || action.Kind == "take" || action.Kind == "drop" || action.Kind == "use" || (action.Kind == "observe" && (action.Target == "" || action.Target == result.View.Location)) {
 			s.showView()
 		}
 		if !local {
+			if action.Kind == "move" || (action.Kind == "observe" && (action.Target == "" || action.Target == result.View.Location)) {
+				s.illustrate(ctx, true)
+			}
 			s.narrate(ctx, result)
+		} else if action.Kind == "move" || (action.Kind == "observe" && (action.Target == "" || action.Target == result.View.Location)) {
+			s.illustrate(ctx, false)
 		}
 	}
 }

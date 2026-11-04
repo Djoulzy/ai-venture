@@ -19,6 +19,16 @@ go run ./cmd/aventure -provider llamacpp -gguf ./models/LFM3-1.7B-Q8_0.gguf -lan
 
 Le scénario embarqué propose quatre lieux, des objets transportables, une porte verrouillée et une balise à rallumer. Ses variantes sont définies dans [scenarios/lighthouse.json](scenarios/lighthouse.json) (anglais) et [scenarios/phare.json](scenarios/phare.json) (français). Un fichier fourni avec `-scenario` conserve ses propres textes et identifiants : le jeu ne le traduit pas automatiquement.
 
+Les sorties utilisent des couleurs ANSI : lieux et sorties en cyan, objets en jaune, faits et sauvegardes réussies en vert, narration en magenta, avertissements en jaune et erreurs en rouge. Les descriptions restent dans la couleur habituelle du terminal.
+
+`-color auto` est le défaut : les couleurs sont activées sur un terminal et désactivées pour les fichiers et les pipes, avec `NO_COLOR` non vide ou avec `TERM=dumb`. `-color always` les force ; `-color never` les désactive. Ces options fonctionnent aussi en mode hors ligne et dans les deux langues.
+
+```sh
+go run ./cmd/aventure -offline -lang fr
+go run ./cmd/aventure -color never
+go run ./cmd/aventure -offline -color always
+```
+
 ## Démarrage sans modèle
 
 Go **1.26 ou ultérieur**. Le pilote SQLite `modernc.org/sqlite` est figé dans `go.mod` ; il fonctionne sans CGO. Le premier build télécharge les dépendances Go, puis le jeu et la recherche fonctionnent localement.
@@ -26,6 +36,32 @@ Go **1.26 ou ultérieur**. Le pilote SQLite `modernc.org/sqlite` est figé dans 
 ```sh
 go run ./cmd/aventure -offline
 ```
+
+## Compiler et distribuer
+
+Le Makefile fournit un build Go sans CGO, avec chemins de développement retirés et symboles de débogage supprimés :
+
+```sh
+make                    # bin/aventure (aventure.exe pour Windows)
+make check              # tests, détection de courses concurrentes et go vet
+make dist VERSION=0.1.0  # archive complète pour la machine qui compile
+```
+
+`make dist` compile le jeu puis le runtime llama.cpp avec le script existant. Il exige donc aussi les outils natifs décrits dans [runtime/README.md](runtime/README.md) et Python 3. Le premier lancement peut télécharger les dépendances Go, les sources llama.cpp et CMake. Les poids GGUF et les données de partie ne sont jamais copiés dans l'archive.
+
+Le résultat est `dist/ai-venture-0.1.0-darwin-arm64.tar.gz` sur un Mac ARM64, accompagné de son fichier `.sha256`. Le dossier archivé contient `aventure`, `runtime/llama-server`, ses métadonnées, un dossier `models/` à compléter, les licences et notices des dépendances Go/natives, un manifeste `BUILD.json` et un guide de lancement. Les scénarios FR/EN et SQLite sont embarqués dans le jeu ; le destinataire n'a pas besoin de Go. Le runtime utilise les bibliothèques du système cible. Le guide inclus est [docs/distribution.md](docs/distribution.md).
+
+Pour distribuer uniquement le jeu, sans compiler ni inclure llama-server :
+
+```sh
+make dist WITH_LLAMA=0 VERSION=0.1.0
+make dist WITH_LLAMA=0 VERSION=0.1.0 GOOS=linux GOARCH=amd64
+make dist WITH_LLAMA=0 VERSION=0.1.0 GOOS=windows GOARCH=amd64
+```
+
+Ces archives portent le suffixe `-game-only` et permettent le mode hors ligne, Ollama ou un llama-server fourni séparément. Le bundle complet doit être compilé nativement sur chaque système et architecture cibles ; le Makefile refuse d'y mélanger un runtime de la machine de compilation avec un exécutable Go destiné à une autre plateforme. Les archives sont reconstruites depuis une sélection explicite de fichiers, avec métadonnées tar normalisées et publication seulement après création complète.
+
+`VERSION` vaut `dev` par défaut. `make help` affiche les cibles et `make clean` supprime les binaires Go et `dist/`, en conservant modèles, sauvegardes, runtime natif et cache de compilation llama.cpp.
 
 Ce mode utilise une grammaire anglaise limitée : `look`, `examine key`, `take key`, `drop key`, `go north`, `inventory`, `use key on door`. Avec `-lang fr`, utiliser `regarder`, `observer cle`, `prendre cle`, `deposer cle`, `aller nord`, `inventaire`, `utiliser cle sur porte`. Les noms complets affichés sont également reconnus. Les directions exactes affichées (`east`, `north`, `est`, `nord`, etc., selon le scénario) sont des raccourcis traités directement par Go, même en mode LLM ; les phrases comme « I head towards the workshop » sont interprétées par le modèle. Le langage naturel libre nécessite le mode LLM.
 
@@ -108,6 +144,8 @@ Il s'agit d'un wrapper de processus et d'un adaptateur HTTP, sans CGO. Une distr
 | `-rag` | `true` | Enrichir la narration par une recherche SQLite FTS5 |
 | `-rag-db` | `<save>.rag.sqlite` | Chemin du cache documentaire local |
 | `-lang` | `en` | Langue du jeu : `en` ou `fr` |
+| `-color` | `auto` | Couleurs ANSI : `auto`, `always` ou `never` |
+| `-art` | `false` | Illustrations LLM des lieux, au maximum 80 colonnes et 24 lignes |
 | `-provider` | `ollama` | Choisir `ollama` ou `llamacpp` |
 | `-model` | Ollama : `OLLAMA_MODEL` ou `lfm3:1.7b` ; llama.cpp : nom du GGUF | Modèle Ollama ou alias du serveur llama.cpp |
 | `-auto-start` | `true` | Démarrer le service local uniquement si la connexion est refusée |
@@ -123,7 +161,7 @@ Le lancement automatique est limité aux URL HTTP de boucle locale sans préfixe
 
 Pour un Ollama lancé par le jeu, le modèle reste chargé après le premier appel jusqu'à l'arrêt du service. Le premier appel effectue le chargement en mémoire : augmenter `-timeout` si nécessaire. Un service Ollama réutilisé garde sa propre politique de conservation du modèle. Avec llama.cpp, le chargement initial est inclus dans `-startup-timeout`.
 
-Pendant la partie, une panne d'interprétation n'applique aucune action ; une panne de narration conserve l'action validée. Utiliser les commandes `/look`, `/take key`, etc. pour continuer sans modèle. Un tour peut comporter deux appels LLM. Ctrl+C annule les requêtes et ferme le service possédé.
+Pendant la partie, une panne d'interprétation n'applique aucune action ; une panne de narration conserve l'action validée. Utiliser les commandes `/look`, `/take key`, etc. pour continuer sans modèle. Un tour peut comporter deux appels LLM, ou trois si `-art` nécessite un nouveau dessin. Ctrl+C annule les requêtes et ferme le service possédé.
 
 L'arrêt des groupes de processus et de leurs descendants est implémenté pour macOS/Linux, avec SIGTERM puis SIGKILL après trois secondes si nécessaire. Sur les autres plateformes, seul le processus enfant direct est arrêté ; la gestion complète des descendants Windows reste à ajouter. Un arrêt brutal du jeu par SIGKILL ne permet pas le nettoyage normal.
 
@@ -161,6 +199,25 @@ Les scénarios de démonstration contiennent chacun cinq documents, dont une ins
 
 Les contraintes `location`, `item` et `conditions` sont facultatives et se cumulent. Sans contrainte, le document est public dès le départ. Une référence d'objet exige qu'il soit visible ou porté au moment de la découverte. `language` vaut `en` ou `fr`. Le validateur accepte jusqu'à 512 documents par scénario, avec des titres de 120 caractères et des textes de 2 000 caractères au maximum. Les futurs générateurs passent par cette même validation.
 
+## Illustrations ASCII / ANSI des lieux
+
+`-art` active un illustrateur LLM indépendant de la narration, disponible avec Ollama ou llama.cpp :
+
+```sh
+go run ./cmd/aventure -lang en -provider llamacpp \
+  -gguf ./models/llama-3.2-3b-instruct-q4_k_m.gguf -art
+```
+
+Le dessin comporte **au maximum 80 colonnes et 24 lignes**, espaces compris. Cette limite concerne le dessin, sans bordure ni légende ajoutées ; la description et les commandes continuent de défiler dans le terminal. Prévoir un terminal d'au moins 80 colonnes pour éviter le repli visuel des lignes.
+
+Le modèle reçoit uniquement le décor visible et renvoie un JSON `lines`, chaque ligne ayant un `text` ASCII imprimable et un `color` parmi `default`, `cyan`, `yellow`, `green`, `blue`, `magenta`, `red`, `gray`. Go valide le document entier avant de l'afficher : lignes trop longues ou trop nombreuses, Unicode, tabulations, séquences ANSI et champs inattendus sont refusés. Le moteur ajoute les couleurs de sa propre palette ; `-color never` fournit le même dessin en ASCII simple. Les codes ANSI ne comptent pas dans les 80 colonnes visibles.
+
+Une première illustration est demandée au démarrage, puis lors d'un déplacement ou d'une observation globale sans préfixe `/`. Le cache en mémoire réutilise un dessin tant que le décor visible n'a pas changé, conserve un dessin par lieu et au maximum 64 lieux. Les objets portés ne sont pas transmis. Les règles, drapeaux, documents RAG et événements passés ne sont pas fournis à l'illustrateur. Les dessins sont décoratifs : les faits canoniques du moteur restent la référence.
+
+`art` en anglais, `dessin` en français, génère ou réaffiche l'illustration courante sans consommer de tour. `/art` et `/dessin` affichent uniquement un dessin déjà en cache ; comme les autres commandes préfixées, ils n'appellent jamais le LLM. Un chargement réussi vide le cache ; demander ensuite `art` / `dessin` pour illustrer le lieu restauré. Les dessins ne sont pas enregistrés dans les sauvegardes ou SQLite.
+
+La génération ajoute un appel LLM de 2 048 tokens de sortie au maximum, soumis à `-timeout`. Sa qualité dépend du modèle ; les petits modèles peuvent produire des formes très sommaires malgré un format valide. Une réponse invalide ou une indisponibilité laisse la description textuelle disponible, sans mutation du monde. `-art=false` est le défaut ; `-offline` désactive aussi l'illustrateur. `-no-narration` coupe la prose, mais permet les dessins si `-art` est demandé explicitement.
+
 ## Commandes locales et sauvegarde
 
 | Anglais | Français | Effet |
@@ -193,6 +250,7 @@ internal/llamacpp/   Adaptateur HTTP llama-server
 internal/modelruntime/ Démarrage, disponibilité et arrêt des services possédés
 internal/inference/httpjson/ Transport HTTP borné partagé
 internal/language/   Prompts et grammaires français/anglais
+internal/illustration/ Dessins LLM ASCII, palette et validation 80 x 24
 internal/locale/     Langue choisie, messages traduits et erreurs avec leurs causes
 internal/retrieval/  Contrat de recherche et budgets du contexte
 internal/retrieval/sqlite/ Cache FTS5 transactionnel des souvenirs autorisés
@@ -223,6 +281,8 @@ go vet ./...
 ```
 
 Les tests couvrent les parcours français et anglais, le choix des prompts, les erreurs localisées et leurs causes, la recherche SQLite réelle, les secrets, les branches abandonnées, les migrations v1, les règles du jeu, les refus sans mutation, les JSON invalides, la persistance, les deux protocoles HTTP et la boucle terminal. Des sous-processus de test vérifient le lancement, la disponibilité, l'arrêt gracieux, l'arrêt forcé, les descendants, l'annulation et les échecs de démarrage. Deux tests d'intégration lancent des serveurs simulés, jouent via les adaptateurs réels puis vérifient la fermeture du port. Ils ne nécessitent ni Ollama, ni llama.cpp, ni modèle, ni Internet. Le bac à sable doit autoriser les ports de boucle locale et les sous-processus.
+
+Les illustrations sont testées aux limites exactes de 80 colonnes et 24 lignes, avec rejet des dépassements, contrôles, Unicode et JSON non conformes. Les tests vérifient aussi le rendu avec/sans ANSI, l'absence d'affichage partiel, le cache, son invalidation et le repli après erreur. Des essais réels avec Llama 3.2 3B en anglais et LFM3-1.7B en français ont produit des dessins valides, mais graphiquement sommaires ; la validité du format ne garantit pas une illustration reconnaissable ou fidèle.
 
 Un essai manuel avec le GGUF `LFM3-1.7B-Q8_0`, llama.cpp v0.8.0 et Metal a terminé le scénario en français et en anglais : huit actions modifiant l'état, refus de la porte verrouillée, narration, sauvegarde, rechargement et arrêt du serveur possédé. Les directions exactes sont natives ; les prises et utilisations d'objets de ces parcours sont interprétées par le modèle. Cet essai ne constitue pas une comparaison générale de qualité entre langues.
 

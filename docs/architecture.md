@@ -24,6 +24,9 @@ flowchart LR
     CXT --> N
     N <--> L
     N --> CLI
+    V --> ART[Illustrateur facultatif, 80 x 24 maximum]
+    ART <--> L
+    ART --> CLI
     S <--> P[Sauvegarde JSON versionnée]
 ```
 
@@ -35,12 +38,13 @@ flowchart LR
 - `engine.Engine` : conserve des copies privées du scénario et de l'état. `Apply(Action) (Result, error)` vérifie la forme, la visibilité, la portabilité, les possessions et les préconditions ; applique sur une copie ; valide les invariants ; puis effectue le remplacement. `Snapshot` et `View` renvoient des copies.
 - `inference.Client` : `Complete(context.Context, Request) (string, error)`. `Request` contient les messages, le JSON Schema, la température et le budget de sortie ; aucune notion d'API Ollama n'entre dans le moteur.
 - `language.Interpreter` : `Interpret(context.Context, string, engine.View) (engine.Action, error)`. `language.Narrator` : `Narrate(context.Context, engine.Result) (string, error)`.
+- `illustration.Illustrator` : `Illustrate(context.Context, engine.View) (Frame, error)`. Son adaptateur LLM projette uniquement le décor visible, sans inventaire ni mémoire RAG. `Frame` contient 1 à 24 lignes ASCII imprimables de 80 colonnes au maximum, avec une palette fermée. Le JSON et les dimensions sont revalidés en Go ; le terminal génère lui-même l'ANSI et refuse un dessin invalide avant toute ligne affichée.
 - `ollama.Client` : HTTP `/api/chat`, sans streaming, contexte annulable, délai et taille bornés ; sonde `/api/tags` pour vérifier le modèle.
 - `llamacpp.Client` : HTTP `/v1/chat/completions`, schéma dans `response_format.json_schema.schema`, sonde `/health`, vérification de l'alias par `/v1/models` et du chemin chargé par `/props` lorsque `-gguf` est fourni. Le nom par défaut vient du fichier GGUF ; `OLLAMA_MODEL` ne concerne que le fournisseur Ollama. Un serveur existant avec un autre alias ou fichier est refusé sans être arrêté.
 - `inference/httpjson` : transport borné partagé par les adaptateurs, avec annulation et refus des redirections.
 - `modelruntime.Service` : supervision séparée de l'inférence. `Ensure(ctx, Config)` réutilise ou démarre un service, attend sa disponibilité et renvoie sa propriété via `Owned()`. `Close()` est idempotent et ne touche qu'au processus lancé par le jeu.
 - `persistence` : enveloppe versionnée, identifiant et SHA-256 du scénario, état. Lecture bornée, validation complète et remplacement atomique du fichier.
-- `terminal` : commandes système locales, orchestration des deux appels LLM, faits canoniques toujours affichés et repli narratif en cas d'erreur.
+- `terminal` : commandes système locales, orchestration de l'interprétation, de la narration et de l'illustration facultative, faits canoniques toujours affichés et repli en cas d'erreur. `Printer` applique une palette ANSI après traduction et filtrage des contrôles. Le mode automatique détecte le terminal et respecte `NO_COLOR` et `TERM=dumb` ; les sorties redirigées restent sans couleur, sauf choix explicite `-color always`.
 
 ## Langue de la partie
 
@@ -59,6 +63,8 @@ Les variantes de démonstration ont des identifiants et empreintes distincts, do
 5. Si l'interprétation échoue, aucune action n'est appliquée. Si la narration échoue, l'action validée reste acquise et les faits Go restent lisibles. Les commandes `/...` permettent de continuer sans inférence.
 
 Un schéma JSON ne garantit pas la vérité sémantique d'une narration. Les consignes limitent les inventions, mais seuls les faits du moteur font foi ; ils sont affichés séparément. Le prototype est mono-joueur et séquentiel, sans garantie d'accès concurrent au même moteur.
+
+L'option `-art` ajoute un appel distinct au démarrage et sur déplacement/observation globale. Les dessins valides sont mis en cache par lieu et signature du décor public, avec un maximum de 64 lieux et une invalidation au chargement. Une commande `/` peut réafficher un cache à jour mais ne génère jamais de dessin. `art` / `dessin` est une commande de présentation sans tour ni mutation. Le rendu reste décoratif, non sauvegardé et hors du RAG ; une erreur conserve les descriptions canoniques. `-no-narration` désactive seulement la prose ; l'illustration est facultative et indépendante.
 
 ## Recherche documentaire
 

@@ -2,6 +2,8 @@
 
 - Le projet est un jeu de terminal Go, en anglais ou français (`-lang en|fr`, anglais par défaut), avec Go 1.26 minimum et le pilote SQLite sans CGO `modernc.org/sqlite`.
 - Garder les prompts, descriptions et commandes cohérents avec la langue choisie. Centraliser les messages traduits dans `internal/locale` ; utiliser `locale.Errorf` pour les erreurs applicatives et conserver leurs causes. Ne jamais traduire arbitrairement les textes du joueur ou du modèle. La documentation de développement peut rester en français.
+- Centraliser les couleurs ANSI dans `terminal.Printer`, après traduction et filtrage des contrôles du texte. Respecter `-color auto|always|never`, `NO_COLOR` et `TERM=dumb` ; ne pas colorer les sorties redirigées en mode automatique. Réinitialiser les attributs avant la saisie du joueur.
+- Les illustrations LLM sont décoratives et limitées à 80 colonnes sur 24 lignes : JSON strict, texte ASCII imprimable et palette fermée, jamais d'ANSI fourni par le modèle. Valider le dessin entier avant affichage, borner son cache et ne pas l'ajouter aux sauvegardes ou au RAG. Les commandes préfixées `/` n'appellent jamais l'illustrateur.
 - Tester les parcours anglais et français ; les variantes du scénario de démonstration possèdent leurs propres identifiants et sauvegardes. Un scénario externe conserve les textes fournis dans son fichier.
 - `internal/world` définit et valide les scénarios ; `internal/engine` est seul responsable des règles et de l'état courant.
 - Le LLM propose une seule action typée. Ne jamais exécuter du code, un chemin de fichier ou un changement d'état provenant du modèle.
@@ -19,6 +21,7 @@
 - Ajouter des tests de comportement pour les règles, les refus sans mutation, les entrées LLM invalides et la persistance. Les tests ordinaires ne doivent pas nécessiter Ollama ou Internet.
 - Exécuter `gofmt`, `go test ./...`, `go test -race ./...` et `go vet ./...` avant livraison d'une modification fonctionnelle.
 - Documenter les changements de commandes, de format JSON et d'architecture. Ne pas committer de sauvegardes, binaires ou modèles.
+- Garder les distributions dans `dist/` avec une liste explicite de fichiers : ne jamais archiver le workspace, les sauvegardes, les caches SQLite ou les modèles. Le bundle complet est natif ; une compilation vers une autre plateforme utilise `WITH_LLAMA=0`. Conserver les licences des dépendances, les manifestes de build et les sommes SHA-256.
 
 - Le RAG est réservé à la narration. Le moteur possède les découvertes et le journal ; SQLite est un cache reconstructible, jamais une source d’état.
 - N’indexer que `Engine.Memory()`, filtrée par découvertes et langue. Ne jamais indexer les règles, les conditions secrètes, le texte du joueur ou la narration générée.
