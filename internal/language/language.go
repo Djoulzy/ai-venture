@@ -11,6 +11,7 @@ import (
 	"ai-venture/internal/engine"
 	"ai-venture/internal/inference"
 	"ai-venture/internal/locale"
+	"ai-venture/internal/retrieval"
 	"ai-venture/internal/strictjson"
 )
 
@@ -74,7 +75,20 @@ func DecodeAction(data []byte) (engine.Action, error) {
 }
 
 func (l LLM) Narrate(ctx context.Context, result engine.Result) (string, error) {
-	payload, err := json.Marshal(result)
+	return l.narrate(ctx, result, nil)
+}
+
+func (l LLM) narrate(ctx context.Context, result engine.Result, memory []retrieval.Document) (string, error) {
+	maxTokens := 160
+	if len(memory) > 0 {
+		// Leave room for one contextual detail and the JSON envelope, especially
+		// in French. The existing 800-character validation still applies.
+		maxTokens = 256
+	}
+	payload, err := json.Marshal(struct {
+		engine.Result
+		Memory []retrieval.Document `json:"memory,omitempty"`
+	}{result, memory})
 	if err != nil {
 		return "", err
 	}
@@ -82,7 +96,7 @@ func (l LLM) Narrate(ctx context.Context, result engine.Result) (string, error) 
 		Messages: []inference.Message{
 			{Role: "system", Content: narratorPrompt(l.Language)},
 			{Role: "user", Content: string(payload)},
-		}, Schema: json.RawMessage(narrationSchema), Temperature: 0.2, MaxTokens: 160,
+		}, Schema: json.RawMessage(narrationSchema), Temperature: 0.2, MaxTokens: maxTokens,
 	})
 	if err != nil {
 		return "", err

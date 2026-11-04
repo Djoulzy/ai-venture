@@ -49,3 +49,9 @@ go.work.sum
 /build/
 /runtime/llama-server
 /runtime/llama-server.build.json
+
+# Rebuildable local retrieval caches
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal

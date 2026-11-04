@@ -34,6 +34,7 @@ func TestMain(m *testing.M) {
 // real server, so tests exercise production launch, HTTP, gameplay and cleanup.
 func runFakeService(provider string) {
 	address := os.Getenv("OLLAMA_HOST")
+	model, gguf := "lfm3:1.7b", ""
 	if provider == "llamacpp" {
 		args := map[string]string{}
 		for i := 1; i < len(os.Args)-1; i++ {
@@ -41,9 +42,10 @@ func runFakeService(provider string) {
 				args[os.Args[i]] = os.Args[i+1]
 			}
 		}
-		if args["--model"] == "" || args["--alias"] != "lfm3:1.7b" {
+		if args["--model"] == "" || args["--alias"] == "" {
 			os.Exit(3)
 		}
+		model, gguf = args["--alias"], args["--model"]
 		address = net.JoinHostPort(args["--host"], args["--port"])
 	} else if len(os.Args) != 2 || os.Args[1] != "serve" {
 		os.Exit(4)
@@ -53,33 +55,37 @@ func runFakeService(provider string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(5)
 	}
-	server := &http.Server{Handler: fakeHandler(provider)}
+	server := &http.Server{Handler: fakeHandler(provider, model, gguf)}
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	go func() { <-signals; _ = server.Close() }()
 	_ = server.Serve(listener)
 }
 
-func fakeHandler(provider string) http.Handler {
+func fakeHandler(provider, model, gguf string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/tags":
-			_ = json.NewEncoder(w).Encode(map[string]any{"models": []any{map[string]string{"name": "lfm3:1.7b"}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": []any{map[string]string{"name": model}}})
 			return
 		case "/health":
 			_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 			return
 		case "/v1/models":
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]string{"id": "lfm3:1.7b"}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]string{"id": model}}})
+			return
+		case "/props":
+			_ = json.NewEncoder(w).Encode(map[string]string{"model_path": gguf})
 			return
 		}
 		var body struct {
+			Model    string `json:"model"`
 			Messages []struct {
 				Content string `json:"content"`
 			} `json:"messages"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Messages) != 2 {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Messages) != 2 || body.Model != model {
 			w.WriteHeader(400)
 			return
 		}
@@ -125,6 +131,7 @@ func testConfig(t *testing.T, provider, address string) backendConfig {
 }
 
 func TestBackendLaunchThroughGameplayAndShutdown(t *testing.T) {
+	t.Setenv("OLLAMA_MODEL", "")
 	for _, provider := range []string{"ollama", "llamacpp"} {
 		t.Run(provider, func(t *testing.T) {
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -135,6 +142,10 @@ func TestBackendLaunchThroughGameplayAndShutdown(t *testing.T) {
 			_ = listener.Close()
 			t.Setenv("AI_VENTURE_FAKE_INFERENCE", provider)
 			cfg := testConfig(t, provider, address)
+			cfg.model, err = resolveModel(provider, "", cfg.gguf)
+			if err != nil {
+				t.Fatal(err)
+			}
 			client, service, err := startBackend(context.Background(), cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -177,7 +188,7 @@ func TestBackendLaunchThroughGameplayAndShutdown(t *testing.T) {
 func TestBackendPreservesExistingService(t *testing.T) {
 	for _, provider := range []string{"ollama", "llamacpp"} {
 		t.Run(provider, func(t *testing.T) {
-			server := httptest.NewServer(fakeHandler(provider))
+			server := httptest.NewServer(fakeHandler(provider, "lfm3:1.7b", ""))
 			defer server.Close()
 			cfg := testConfig(t, provider, server.URL)
 			// A reused service requires neither a local executable nor a GGUF file.
@@ -195,6 +206,63 @@ func TestBackendPreservesExistingService(t *testing.T) {
 			response, err := http.Get(server.URL + "/health")
 			if err != nil {
 				t.Fatal("service existant arrêté")
+			}
+			_ = response.Body.Close()
+		})
+	}
+}
+
+func TestModelDefaultsFollowProviderAndGGUF(t *testing.T) {
+	t.Setenv("OLLAMA_MODEL", "ollama-only")
+	for _, tc := range []struct {
+		provider, model, gguf, want string
+		wantError                   bool
+	}{
+		{"ollama", "", "", "ollama-only", false},
+		{"ollama", "custom", "", "custom", false},
+		{"llamacpp", "", "./models/llama-3.2-3b-instruct-q4_k_m.gguf", "llama-3.2-3b-instruct-q4_k_m.gguf", false},
+		{"llamacpp", "", "./models/LFM3-1.7B-Q8_0.gguf", "LFM3-1.7B-Q8_0.gguf", false},
+		{"llamacpp", "explicit-alias", "./models/llama.gguf", "explicit-alias", false},
+		{"llamacpp", "server-alias", "", "server-alias", false},
+		{"llamacpp", "", "", "", true},
+	} {
+		got, err := resolveModel(tc.provider, tc.model, tc.gguf)
+		if got != tc.want || (err != nil) != tc.wantError {
+			t.Fatalf("%+v: got %q, %v", tc, got, err)
+		}
+	}
+	t.Setenv("OLLAMA_MODEL", "")
+	if got, err := resolveModel("ollama", "", ""); err != nil || got != "lfm3:1.7b" {
+		t.Fatalf("Ollama default: %q, %v", got, err)
+	}
+}
+
+func TestBackendChecksGGUFOnExistingServerWithSameAlias(t *testing.T) {
+	for _, matching := range []bool{true, false} {
+		t.Run(fmt.Sprint(matching), func(t *testing.T) {
+			cfg := testConfig(t, "llamacpp", "")
+			reported := cfg.gguf
+			if !matching {
+				// Same alias AND filename, but a different model file.
+				reported = filepath.Join(t.TempDir(), filepath.Base(cfg.gguf))
+			}
+			server := httptest.NewServer(fakeHandler("llamacpp", cfg.model, reported))
+			defer server.Close()
+			cfg.llamaURL, cfg.llamaBinary = server.URL, "/must-not-start"
+			client, service, err := startBackend(context.Background(), cfg)
+			if matching {
+				if err != nil || service.Owned() {
+					t.Fatalf("matching server was not reused: %v", err)
+				}
+				if err := service.Close(); err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || client != nil || service != nil || !strings.Contains(err.Error(), "loaded GGUF") {
+				t.Fatalf("different GGUF accepted or wrong failure: %v", err)
+			}
+			response, err := http.Get(server.URL + "/health")
+			if err != nil {
+				t.Fatal("existing server was stopped")
 			}
 			_ = response.Body.Close()
 		})

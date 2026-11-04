@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -67,12 +69,51 @@ func (c *Client) Ready(ctx context.Context) (bool, error) {
 	if err := json.Unmarshal(data, &models); err != nil {
 		return false, locale.Errorf("invalid llama-server model list: %w", err)
 	}
+	available := []string{}
 	for _, model := range models.Data {
 		if model.ID == c.model {
 			return true, nil
 		}
+		available = append(available, model.ID)
 	}
-	return false, locale.Errorf("llama.cpp server does not offer model %q; check -model or the server --alias", c.model)
+	return false, locale.Errorf("llama-server offers %q, but model %q was requested; check -model or use another -llama-url", strings.Join(available, ", "), c.model)
+}
+
+// VerifyModelFile checks the file path advertised by a standalone llama-server.
+// An alias alone is not proof that an existing service loaded the requested GGUF.
+// Relative server paths are ambiguous because its working directory is unknown.
+func (c *Client) VerifyModelFile(ctx context.Context, expected string) error {
+	want, err := filepath.Abs(expected)
+	if err != nil {
+		return err
+	}
+	status, data, err := c.http.Do(ctx, http.MethodGet, "/props", nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return locale.Errorf("cannot verify llama-server GGUF: /props HTTP %d", status)
+	}
+	var props struct {
+		ModelPath string `json:"model_path"`
+	}
+	if err := json.Unmarshal(data, &props); err != nil || strings.TrimSpace(props.ModelPath) == "" {
+		return locale.Errorf("cannot verify llama-server GGUF: missing or invalid model_path in /props")
+	}
+	if !filepath.IsAbs(props.ModelPath) {
+		return locale.Errorf("llama-server reports a relative GGUF path %q; restart it with an absolute path or use -model without -gguf", props.ModelPath)
+	}
+	if filepath.Clean(props.ModelPath) == want {
+		return nil
+	}
+	// Accept local symlinks and hard links to the same file, not merely the same
+	// filename in different directories. No expensive model hashing is needed.
+	wantInfo, wantErr := os.Stat(want)
+	gotInfo, gotErr := os.Stat(props.ModelPath)
+	if wantErr == nil && gotErr == nil && os.SameFile(wantInfo, gotInfo) {
+		return nil
+	}
+	return locale.Errorf("llama-server loaded GGUF %q, but -gguf requests %q; use another -llama-url or restart that server with the requested file", props.ModelPath, want)
 }
 
 func (c *Client) Complete(ctx context.Context, request inference.Request) (string, error) {
@@ -86,16 +127,23 @@ func (c *Client) Complete(ctx context.Context, request inference.Request) (strin
 		Temperature    float64             `json:"temperature"`
 		MaxTokens      int                 `json:"max_tokens"`
 		ResponseFormat struct {
-			Type   string          `json:"type"`
-			Schema json.RawMessage `json:"schema"`
+			Type       string `json:"type"`
+			JSONSchema struct {
+				Name   string          `json:"name"`
+				Strict bool            `json:"strict"`
+				Schema json.RawMessage `json:"schema"`
+			} `json:"json_schema"`
 		} `json:"response_format"`
 		ChatTemplateKwargs map[string]bool `json:"chat_template_kwargs"`
 		ReasoningEffort    string          `json:"reasoning_effort"`
 	}{Model: c.model, Messages: request.Messages, Temperature: request.Temperature, MaxTokens: request.MaxTokens,
 		ChatTemplateKwargs: map[string]bool{"enable_thinking": false}, ReasoningEffort: "none"}
-	// llama-server documents its schema directly inside response_format.
+	// For type=json_schema, llama-server reads json_schema.schema. A schema
+	// directly under response_format is only used with type=json_object.
 	body.ResponseFormat.Type = "json_schema"
-	body.ResponseFormat.Schema = request.Schema
+	body.ResponseFormat.JSONSchema.Name = "game_response"
+	body.ResponseFormat.JSONSchema.Strict = true
+	body.ResponseFormat.JSONSchema.Schema = request.Schema
 	status, data, err := c.http.Do(ctx, http.MethodPost, "/v1/chat/completions", body)
 	if err != nil {
 		return "", locale.Errorf("llama-server unavailable: %w", err)

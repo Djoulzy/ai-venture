@@ -21,7 +21,7 @@ Le scénario embarqué propose quatre lieux, des objets transportables, une port
 
 ## Démarrage sans modèle
 
-Go 1.22 ou ultérieur. Aucune dépendance Go externe.
+Go **1.26 ou ultérieur**. Le pilote SQLite `modernc.org/sqlite` est figé dans `go.mod` ; il fonctionne sans CGO. Le premier build télécharge les dépendances Go, puis le jeu et la recherche fonctionnent localement.
 
 ```sh
 go run ./cmd/aventure -offline
@@ -58,7 +58,7 @@ go run ./cmd/aventure -load -save ma-partie.json
 go build -o bin/aventure ./cmd/aventure
 ```
 
-`OLLAMA_MODEL` et `OLLAMA_HOST` fournissent les valeurs par défaut des options correspondantes. `OLLAMA_HOST` doit contenir une URL complète avec `http://` ou `https://`. Le scénario par défaut est embarqué dans le binaire et fonctionne depuis n'importe quel répertoire. `-no-narration` conserve l'interprétation LLM tout en évitant le deuxième appel.
+`OLLAMA_MODEL` et `OLLAMA_HOST` fournissent les valeurs par défaut pour le fournisseur Ollama uniquement. `OLLAMA_HOST` doit contenir une URL complète avec `http://` ou `https://`. Le scénario par défaut est embarqué dans le binaire et fonctionne depuis n'importe quel répertoire. `-no-narration` conserve l'interprétation LLM tout en évitant le deuxième appel.
 
 ## Avec llama.cpp et un fichier GGUF
 
@@ -79,7 +79,16 @@ go run ./cmd/aventure -provider llamacpp \
   -gguf ./models/lfm3-1.7b.gguf
 ```
 
-Le jeu lance le serveur sur `127.0.0.1:8080`, avec un contexte de 4096 tokens, un seul slot et l'alias `lfm3:1.7b`. Il attend que le modèle soit chargé. Le protocole utilise `/v1/chat/completions` et un schéma JSON dans `response_format`. La validation Go des actions reste identique.
+Le jeu lance le serveur sur `127.0.0.1:8080`, avec un contexte de 4096 tokens et un seul slot. L'alias et le nom affiché sont dérivés du nom du fichier GGUF, sauf si `-model` fournit un alias explicite. Par exemple, cette commande sélectionne Llama 3.2 et affiche `llama-3.2-3b-instruct-q4_k_m.gguf` :
+
+```sh
+go run ./cmd/aventure -lang en -provider llamacpp \
+  -gguf ./models/llama-3.2-3b-instruct-q4_k_m.gguf
+```
+
+Le jeu attend le chargement du modèle et vérifie le chemin annoncé par `/props` avant d'afficher `Verified GGUF`. Cette vérification porte aussi sur les serveurs existants : un alias identique ne suffit pas à accepter un autre fichier. Un serveur utilisant un autre modèle est laissé intact et la partie s'arrête avec une erreur explicite. Utiliser par exemple `-llama-url http://127.0.0.1:8081` pour démarrer le modèle demandé sur un autre port libre.
+
+Le protocole utilise `/v1/chat/completions`, avec `response_format.type=json_schema` et le schéma imbriqué dans `response_format.json_schema.schema`. La validation Go des actions reste identique.
 
 Pour réutiliser un serveur déjà lancé, le fichier GGUF et le binaire ne sont pas requis par le jeu. `-model` doit correspondre à l'identifiant annoncé par `/v1/models` ou à l'alias configuré sur ce serveur :
 
@@ -88,14 +97,19 @@ go run ./cmd/aventure -provider llamacpp -auto-start=false \
   -llama-url http://127.0.0.1:8080 -model lfm3:1.7b
 ```
 
+Sans `-gguf`, le choix repose sur `-model`, qui est alors obligatoire pour llama.cpp. Avec `-gguf`, le serveur doit exposer un chemin absolu dans `/props` ; les liens locaux vers le même fichier sont acceptés. Les serveurs distants ou conteneurisés dont les chemins diffèrent se sélectionnent avec `-model` sans `-gguf`. Le jeu compare les chemins annoncés, sans calculer l'empreinte des poids en mémoire.
+
 Il s'agit d'un wrapper de processus et d'un adaptateur HTTP, sans CGO. Une distribution peut regrouper `aventure`, `runtime/llama-server` et `models/lfm3-1.7b.gguf`, ainsi que les éventuelles bibliothèques natives requises par le binaire llama.cpp choisi. Le binaire compilé est présent localement mais ignoré par Git, comme les poids du modèle.
 
 ## Gestion du service et délais
 
 | Option | Défaut | Rôle |
 | --- | --- | --- |
+| `-rag` | `true` | Enrichir la narration par une recherche SQLite FTS5 |
+| `-rag-db` | `<save>.rag.sqlite` | Chemin du cache documentaire local |
 | `-lang` | `en` | Langue du jeu : `en` ou `fr` |
 | `-provider` | `ollama` | Choisir `ollama` ou `llamacpp` |
+| `-model` | Ollama : `OLLAMA_MODEL` ou `lfm3:1.7b` ; llama.cpp : nom du GGUF | Modèle Ollama ou alias du serveur llama.cpp |
 | `-auto-start` | `true` | Démarrer le service local uniquement si la connexion est refusée |
 | `-startup-timeout` | `2m` | Attente maximale de disponibilité au démarrage |
 | `-timeout` | `45s` | Délai maximal par appel HTTP/LLM |
@@ -115,6 +129,38 @@ L'arrêt des groupes de processus et de leurs descendants est implémenté pour 
 
 Le processus llama.cpp géré reçoit des options explicites et `--offline`. Il n'hérite pas des variables `LLAMA_*` du parent, afin de ne pas activer une autre configuration de modèle, d'authentification ou de serveur. Pour une configuration avancée, lancer le serveur soi-même puis utiliser `-auto-start=false`.
 
+## Mémoire documentaire locale (RAG)
+
+Le RAG est activé par défaut avec la narration LLM, pour Ollama comme pour llama.cpp. Le jeu crée `savegame-en.json.rag.sqlite` ou `savegame-fr.json.rag.sqlite` à côté de la sauvegarde choisie. Le dossier doit exister. Aucun modèle d'embeddings ni service supplémentaire n'est requis.
+
+```sh
+go run ./cmd/aventure -provider llamacpp -gguf ./models/LFM3-1.7B-Q8_0.gguf -lang fr
+go run ./cmd/aventure -rag-db ./memory.rag.sqlite
+go run ./cmd/aventure -rag=false
+```
+
+SQLite utilise FTS5, un tokenizer Unicode insensible aux accents et un classement BM25. La recherche est lexicale : les synonymes et les traductions ne sont pas rapprochés automatiquement. Elle s'appuie sur le résultat validé et le lieu courant ; elle transmet au narrateur au maximum trois extraits, avec un budget de 1 600 caractères Unicode pour les titres et textes. Les conditions de découverte et les règles ne sont jamais transmises. L'interpréteur de commandes reçoit toujours uniquement la vue visible.
+
+Go conserve les documents découverts et les 128 dernières actions de mutation réussies. Les observations, les actions refusées et les textes produits par le modèle ne sont pas ajoutés au journal. Les passages documentaires sont découverts automatiquement lorsque leurs exigences sont réunies, puis restent connus. Chaque recherche remplace transactionnellement le corpus du scénario et de la langue par la copie autorisée du moteur. Une nouvelle partie ou un chargement ne peut donc pas réutiliser les souvenirs d'une branche abandonnée. Le cache sur disque peut refléter la dernière recherche jusqu'à la suivante ; il n'est jamais chargé comme état de partie.
+
+Si le cache manque, il est recréé. En cas d'erreur SQLite ou de délai dépassé, la narration continue avec les faits du moteur. `-offline`, `-no-narration` et `-rag=false` n'ouvrent pas SQLite ; les découvertes et le journal Go restent sauvegardés. Les fichiers SQLite peuvent être supprimés quand le jeu est arrêté sans perdre la progression.
+
+Les scénarios de démonstration contiennent chacun cinq documents, dont une inscription découverte après ouverture de la porte. Pour enrichir un scénario externe, ajouter le champ facultatif `documents` :
+
+```json
+{
+  "id": "stair_inscription",
+  "language": "en",
+  "title": "An inscription inside the copper door",
+  "text": "The inscription dedicates the stairs to the island rescue crews.",
+  "location": "hall",
+  "item": "door",
+  "conditions": [{"flag": "door_open", "value": true}]
+}
+```
+
+Les contraintes `location`, `item` et `conditions` sont facultatives et se cumulent. Sans contrainte, le document est public dès le départ. Une référence d'objet exige qu'il soit visible ou porté au moment de la découverte. `language` vaut `en` ou `fr`. Le validateur accepte jusqu'à 512 documents par scénario, avec des titres de 120 caractères et des textes de 2 000 caractères au maximum. Les futurs générateurs passent par cette même validation.
+
 ## Commandes locales et sauvegarde
 
 | Anglais | Français | Effet |
@@ -127,9 +173,9 @@ Le processus llama.cpp géré reçoit des options explicites et `--offline`. Il 
 
 Les commandes système acceptent aussi le préfixe `/`. En mode français, les alias anglais `help`, `save`, `load` et `quit` restent disponibles.
 
-Les fichiers par défaut sont `savegame-en.json` et `savegame-fr.json`. Les variantes du scénario ont des identifiants et empreintes distincts : reprendre une partie avec la même langue. Le moteur refuse un chargement entre les deux variantes, sans modifier l'état courant. `-save` permet de choisir un autre fichier, notamment `-lang fr -load -save sauvegarde.json` pour une sauvegarde de l'ancien scénario français inchangé. Aucun ancien fichier n'est déplacé ni modifié automatiquement.
+Les fichiers par défaut sont `savegame-en.json` et `savegame-fr.json`. Les variantes du scénario ont des identifiants et empreintes distincts : reprendre une partie avec la même langue. Le moteur refuse un chargement entre les deux variantes, sans modifier l'état courant. `-save` permet de choisir un autre fichier, notamment `-lang fr -load -save sauvegarde.json` pour une ancienne sauvegarde française compatible. Aucun ancien fichier n'est déplacé ni modifié automatiquement.
 
-Le fichier de sauvegarde est du JSON lisible : version, identifiant du scénario, empreinte SHA-256 et état. Le moteur refuse les objets manquants, positions inconnues, objets fixes déplacés, drapeaux incohérents et versions incompatibles. Un chargement échoué laisse la partie courante intacte. Une sauvegarde réussie remplace l'ancienne ; son répertoire doit déjà exister.
+Le fichier de sauvegarde est du JSON lisible : version, identifiant du scénario, empreinte SHA-256 et état. La version 2 inclut les identifiants des documents découverts et le journal typé ; elle ne stocke aucune narration générée. Les sauvegardes v1 sont reprises si le scénario correspond exactement, ou si seuls les nouveaux documents ont été ajoutés. Les faits passés absents de la sauvegarde ne sont pas inventés ; seules les découvertes accessibles au moment de la reprise sont recalculées. Un changement des règles ou des autres champs du scénario reste incompatible. Le moteur refuse les objets manquants, positions inconnues, objets fixes déplacés, drapeaux incohérents et versions incompatibles. Un chargement échoué laisse la partie courante intacte. Une sauvegarde réussie remplace l'ancienne ; son répertoire doit déjà exister.
 
 L'empreinte assure la compatibilité avec le scénario, pas l'authenticité de la sauvegarde. Ce prototype ne cherche pas à empêcher un joueur d'éditer ses drapeaux localement. L'écriture est atomique contre un fichier partiel ; elle ne constitue pas une garantie de durabilité face à toutes les pannes matérielles.
 
@@ -148,6 +194,8 @@ internal/modelruntime/ Démarrage, disponibilité et arrêt des services posséd
 internal/inference/httpjson/ Transport HTTP borné partagé
 internal/language/   Prompts et grammaires français/anglais
 internal/locale/     Langue choisie, messages traduits et erreurs avec leurs causes
+internal/retrieval/  Contrat de recherche et budgets du contexte
+internal/retrieval/sqlite/ Cache FTS5 transactionnel des souvenirs autorisés
 internal/persistence/ Sauvegarde et chargement atomiques
 internal/terminal/   Boucle de jeu, commandes locales et affichage
 internal/strictjson/ Décodage JSON strict aux frontières
@@ -174,9 +222,13 @@ go test -race ./...
 go vet ./...
 ```
 
-Les tests couvrent les parcours français et anglais, le choix des prompts, les erreurs localisées et leurs causes, les règles du jeu, les refus sans mutation, les JSON invalides, la persistance, les deux protocoles HTTP et la boucle terminal. Des sous-processus de test vérifient le lancement, la disponibilité, l'arrêt gracieux, l'arrêt forcé, les descendants, l'annulation et les échecs de démarrage. Deux tests d'intégration lancent des serveurs simulés, jouent via les adaptateurs réels puis vérifient la fermeture du port. Ils ne nécessitent ni Ollama, ni llama.cpp, ni modèle, ni Internet. Le bac à sable doit autoriser les ports de boucle locale et les sous-processus.
+Les tests couvrent les parcours français et anglais, le choix des prompts, les erreurs localisées et leurs causes, la recherche SQLite réelle, les secrets, les branches abandonnées, les migrations v1, les règles du jeu, les refus sans mutation, les JSON invalides, la persistance, les deux protocoles HTTP et la boucle terminal. Des sous-processus de test vérifient le lancement, la disponibilité, l'arrêt gracieux, l'arrêt forcé, les descendants, l'annulation et les échecs de démarrage. Deux tests d'intégration lancent des serveurs simulés, jouent via les adaptateurs réels puis vérifient la fermeture du port. Ils ne nécessitent ni Ollama, ni llama.cpp, ni modèle, ni Internet. Le bac à sable doit autoriser les ports de boucle locale et les sous-processus.
 
 Un essai manuel avec le GGUF `LFM3-1.7B-Q8_0`, llama.cpp v0.8.0 et Metal a terminé le scénario en français et en anglais : huit actions modifiant l'état, refus de la porte verrouillée, narration, sauvegarde, rechargement et arrêt du serveur possédé. Les directions exactes sont natives ; les prises et utilisations d'objets de ces parcours sont interprétées par le modèle. Cet essai ne constitue pas une comparaison générale de qualité entre langues.
+
+Le même parcours a été vérifié avec le RAG activé dans les deux langues : cinq documents découverts et huit événements en fin de partie, remplacement du cache par les deux documents accessibles au départ lors d'une nouvelle partie, puis reconstruction des treize entrées au rechargement de la sauvegarde. Le schéma envoyé à llama-server est placé dans `response_format.json_schema.schema` afin de contraindre effectivement la forme des réponses.
+
+Un essai avec `llama-3.2-3b-instruct-q4_k_m.gguf`, sans `-model`, a confirmé le fichier chargé via `/props` et les 3 212 749 888 paramètres annoncés par `/v1/models`. Trois commandes anglaises en langage naturel (prendre la clé, rejoindre le phare, ouvrir la porte), la narration, la sauvegarde et l'arrêt du serveur ont été vérifiés. Les tests simulés couvrent également le refus d'un serveur chargé avec un autre GGUF malgré un alias identique.
 
 Certaines formulations libres restent mal interprétées, notamment lors d'une observation d'objet. Les commandes `/examine key` et `/observer cle` donnent accès à l'observation locale dans la langue correspondante ; les propositions invalides du modèle sont refusées sans modifier l'état.
 

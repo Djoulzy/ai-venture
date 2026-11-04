@@ -52,5 +52,48 @@
       "blocked_message": "The beacon is already lit, or the way to it has not been unlocked."
     }
   ],
-  "goal": [{"flag": "beacon_lit", "value": true}]
+  "goal": [{"flag": "beacon_lit", "value": true}],
+  "documents": [
+    {
+      "id": "island_history",
+      "title": "The island lighthouse",
+      "text": "For generations, the island lighthouse has guided fishing crews through the reefs. Its keeper maintains a backup beacon for nights when the mains power fails.",
+      "language": "en"
+    },
+    {
+      "id": "keeper_workshop",
+      "title": "The keeper's workshop notebook",
+      "text": "The workshop notebook records the keeper's weekly battery inspections. Salt air corrodes the contacts, so the backup battery is stored inside the workshop.",
+      "location": "workshop",
+      "language": "en"
+    },
+    {
+      "id": "copper_key_tag",
+      "title": "The copper key tag",
+      "text": "The tag on the copper key was cut from an old brass chart label. The keeper used copper fittings throughout the lighthouse to resist the sea air.",
+      "item": "key",
+      "language": "en"
+    },
+    {
+      "id": "stair_inscription",
+      "title": "An inscription inside the copper door",
+      "text": "Inside the open copper door, an inscription dedicates the lighthouse stairs to the island rescue crews. It can only be read from the hall once the door is open.",
+      "location": "hall",
+      "item": "door",
+      "conditions": [
+        {
+          "flag": "door_open",
+          "value": true
+        }
+      ],
+      "language": "en"
+    },
+    {
+      "id": "lantern_log",
+      "title": "The lantern room logbook",
+      "text": "The lantern room logbook lists the names of vessels guided safely past the reefs. The beacon is serviced each autumn before the first winter storms.",
+      "location": "lantern_room",
+      "language": "en"
+    }
+  ]
 }

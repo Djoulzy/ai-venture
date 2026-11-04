@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"ai-venture/internal/inference"
@@ -26,6 +27,25 @@ type backendConfig struct {
 	startupTimeout time.Duration
 }
 
+// Ollama tags and llama.cpp aliases have separate defaults. In particular,
+// OLLAMA_MODEL must never label an unrelated GGUF as LFM3.
+func resolveModel(provider, model, gguf string) (string, error) {
+	if model != "" {
+		return model, nil
+	}
+	switch provider {
+	case "ollama":
+		return env("OLLAMA_MODEL", "lfm3:1.7b"), nil
+	case "llamacpp":
+		if gguf != "" {
+			return filepath.Base(gguf), nil
+		}
+		return "", locale.Errorf("llama.cpp requires -gguf to select a local file, or -model to select an existing server model")
+	default:
+		return "", locale.Errorf("unknown provider %q: use ollama or llamacpp", provider)
+	}
+}
+
 func startBackend(ctx context.Context, cfg backendConfig) (inference.Client, *modelruntime.Service, error) {
 	var client inference.Client
 	var probe func(context.Context) (bool, error)
@@ -43,7 +63,17 @@ func startBackend(ctx context.Context, cfg backendConfig) (inference.Client, *mo
 		if err != nil {
 			return nil, nil, err
 		}
-		client, probe = c, c.Ready
+		client = c
+		probe = func(ctx context.Context) (bool, error) {
+			ready, err := c.Ready(ctx)
+			if err != nil || !ready || cfg.gguf == "" {
+				return ready, err
+			}
+			if err := c.VerifyModelFile(ctx, cfg.gguf); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		command = func() (*exec.Cmd, error) {
 			return modelruntime.LlamaCommand(cfg.llamaBinary, cfg.llamaURL, cfg.gguf, cfg.model, cfg.llamaContext)
 		}

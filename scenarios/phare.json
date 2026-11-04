@@ -52,5 +52,48 @@
       "blocked_message": "La balise est déjà allumée ou son accès n'est pas déverrouillé."
     }
   ],
-  "goal": [{"flag": "balise_allumee", "value": true}]
+  "goal": [{"flag": "balise_allumee", "value": true}],
+  "documents": [
+    {
+      "id": "histoire_ile",
+      "title": "Le phare de l'île",
+      "text": "Depuis des générations, le phare de l'île guide les pêcheurs entre les récifs. Son gardien entretient une balise de secours pour les nuits de coupure de courant.",
+      "language": "fr"
+    },
+    {
+      "id": "carnet_atelier",
+      "title": "Le carnet de l'atelier du gardien",
+      "text": "Le carnet de l'atelier rapporte les vérifications hebdomadaires de la batterie par le gardien. L'air salin ronge les contacts ; la batterie de secours est donc rangée à l'intérieur de l'atelier.",
+      "location": "atelier",
+      "language": "fr"
+    },
+    {
+      "id": "etiquette_cle",
+      "title": "L'étiquette de la clé de cuivre",
+      "text": "L'étiquette de la clé de cuivre provient d'une ancienne plaque de carte marine. Le gardien employait des pièces de cuivre dans tout le phare pour résister à l'air marin.",
+      "item": "cle",
+      "language": "fr"
+    },
+    {
+      "id": "inscription_escalier",
+      "title": "Une inscription derrière la porte de cuivre",
+      "text": "Derrière la porte de cuivre ouverte, une inscription dédie l'escalier du phare aux équipes de sauvetage de l'île. Elle ne se lit depuis le vestibule qu'une fois la porte ouverte.",
+      "location": "vestibule",
+      "item": "porte",
+      "conditions": [
+        {
+          "flag": "porte_ouverte",
+          "value": true
+        }
+      ],
+      "language": "fr"
+    },
+    {
+      "id": "registre_lanterne",
+      "title": "Le registre de la chambre de la lanterne",
+      "text": "Le registre de la lanterne recense les navires guidés sans encombre entre les récifs. La balise est révisée chaque automne avant les premières tempêtes hivernales.",
+      "location": "lanterne",
+      "language": "fr"
+    }
+  ]
 }

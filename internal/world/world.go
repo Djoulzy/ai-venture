@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"ai-venture/internal/locale"
 	"ai-venture/internal/strictjson"
@@ -31,6 +32,21 @@ type Definition struct {
 	Rules        []UseRule           `json:"rules"`
 	Goal         []Condition         `json:"goal"`
 	Provenance   *Provenance         `json:"provenance,omitempty"`
+	Documents    []Document          `json:"documents,omitempty"`
+}
+
+const MaxDocuments = 512
+
+// Document is authored lore. All discovery requirements must hold at once.
+// Empty location/item/conditions make a document available from the start.
+type Document struct {
+	ID         string      `json:"id"`
+	Language   string      `json:"language"`
+	Title      string      `json:"title"`
+	Text       string      `json:"text"`
+	Location   string      `json:"location,omitempty"`
+	Item       string      `json:"item,omitempty"`
+	Conditions []Condition `json:"conditions,omitempty"`
 }
 
 type Provenance struct {
@@ -218,6 +234,28 @@ func Validate(w Definition) error {
 	}
 	if len(w.Goal) == 0 {
 		return locale.Errorf("missing objective")
+	}
+	if len(w.Documents) > MaxDocuments {
+		return locale.Errorf("too many lore documents")
+	}
+	documentIDs := map[string]bool{}
+	for _, doc := range w.Documents {
+		if !identifier.MatchString(doc.ID) || documentIDs[doc.ID] ||
+			(doc.Language != "en" && doc.Language != "fr") ||
+			strings.TrimSpace(doc.Title) == "" || strings.TrimSpace(doc.Text) == "" ||
+			utf8.RuneCountInString(doc.Title) > 120 || utf8.RuneCountInString(doc.Text) > 2000 {
+			return locale.Errorf("invalid or duplicate lore document: %s", doc.ID)
+		}
+		documentIDs[doc.ID] = true
+		if _, ok := w.Locations[doc.Location]; doc.Location != "" && !ok {
+			return locale.Errorf("unknown lore location: %s", doc.ID)
+		}
+		if _, ok := w.Items[doc.Item]; doc.Item != "" && !ok {
+			return locale.Errorf("unknown lore item: %s", doc.ID)
+		}
+		if err := checkConditions(doc.Conditions); err != nil {
+			return err
+		}
 	}
 	if err := checkConditions(w.Goal); err != nil {
 		return err

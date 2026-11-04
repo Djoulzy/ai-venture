@@ -123,3 +123,53 @@ func TestScenarioFingerprintIncludesRules(t *testing.T) {
 		t.Fatal("scénario modifié accepté")
 	}
 }
+
+func TestLegacySaveLoadsWithoutInventedHistory(t *testing.T) {
+	w, err := (scenarios.Demo{}).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A v1 scenario without lore keeps the same fingerprint through the optional extension.
+	current := w
+	w.Documents = nil
+	e, err := engine.New(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.Apply(engine.Action{Kind: "take", Target: "key"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := e.Snapshot()
+	snapshot.Knowledge = nil
+	snapshot.Journal = nil
+	legacy := persistence.SaveFile{Version: 1, ScenarioID: e.ScenarioID(), ScenarioHash: e.Fingerprint(), State: snapshot}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "legacy.json")
+	if err = os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := engine.New(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = persistence.Load(path, loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Snapshot().ItemLocations["key"] != "@inventory" || len(loaded.Snapshot().Journal) != 0 {
+		t.Fatal("legacy history invented")
+	}
+	if len(loaded.Snapshot().Knowledge) == 0 {
+		t.Fatal("currently accessible lore not discovered")
+	}
+	current.Rules[0].Effects["beacon_lit"] = true
+	changed, err := engine.New(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = persistence.Load(path, changed); err == nil {
+		t.Fatal("legacy upgrade accepted different rules")
+	}
+}

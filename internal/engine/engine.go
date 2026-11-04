@@ -48,10 +48,14 @@ type State struct {
 	Turn          uint64            `json:"turn"`
 	ItemLocations map[string]string `json:"item_locations"`
 	Flags         map[string]bool   `json:"flags"`
+	Knowledge     []string          `json:"knowledge,omitempty"`
+	Journal       []Event           `json:"journal,omitempty"`
 }
 
 func (s State) Clone() State {
 	copy := State{Location: s.Location, Turn: s.Turn, ItemLocations: map[string]string{}, Flags: map[string]bool{}}
+	copy.Knowledge = append([]string(nil), s.Knowledge...)
+	copy.Journal = append([]Event(nil), s.Journal...)
 	for k, v := range s.ItemLocations {
 		copy.ItemLocations[k] = v
 	}
@@ -117,7 +121,9 @@ func NewWithLanguage(w world.Definition, language locale.Language) (*Engine, err
 	for flag, value := range w.Flags {
 		s.Flags[flag] = value
 	}
-	return &Engine{definition: w, state: s, fingerprint: world.Fingerprint(w), language: selected}, nil
+	e := &Engine{definition: w, state: s, fingerprint: world.Fingerprint(w), language: selected}
+	e.discover(&e.state)
+	return e, nil
 }
 
 func (e *Engine) Language() locale.Language { return e.language }
@@ -126,11 +132,20 @@ func (e *Engine) ScenarioID() string  { return e.definition.ID }
 func (e *Engine) Fingerprint() string { return e.fingerprint }
 func (e *Engine) Snapshot() State     { return e.state.Clone() }
 
+// LegacyFingerprint permits a v1 save to acquire newly authored lore only when
+// every pre-existing scenario field (including all rules) still matches.
+func (e *Engine) LegacyFingerprint() string {
+	legacy := e.definition
+	legacy.Documents = nil
+	return world.Fingerprint(legacy)
+}
+
 func (e *Engine) Restore(s State) error {
 	if err := ValidateState(e.definition, s); err != nil {
 		return err
 	}
 	e.state = s.Clone()
+	e.discover(&e.state)
 	return nil
 }
 
@@ -164,7 +179,7 @@ func ValidateState(w world.Definition, s State) error {
 			return locale.Errorf("missing flag: %s", flag)
 		}
 	}
-	return nil
+	return validateMemory(w, s)
 }
 
 func (e *Engine) accessible(id string) bool {
@@ -266,7 +281,12 @@ func (e *Engine) Apply(a Action) (Result, error) {
 	}
 	if mutates {
 		next.Turn++
+		next.Journal = append(next.Journal, Event{Turn: next.Turn, Location: next.Location, Action: a})
+		if len(next.Journal) > MaxJournal {
+			next.Journal = next.Journal[len(next.Journal)-MaxJournal:]
+		}
 	}
+	e.discover(&next)
 	if err := ValidateState(e.definition, next); err != nil {
 		return Result{}, err
 	}

@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,8 +27,13 @@ func TestChatProtocol(t *testing.T) {
 			Messages       []inference.Message `json:"messages"`
 			MaxTokens      int                 `json:"max_tokens"`
 			ResponseFormat struct {
-				Type   string         `json:"type"`
-				Schema map[string]any `json:"schema"`
+				Type       string          `json:"type"`
+				Schema     json.RawMessage `json:"schema"`
+				JSONSchema struct {
+					Name   string         `json:"name"`
+					Strict bool           `json:"strict"`
+					Schema map[string]any `json:"schema"`
+				} `json:"json_schema"`
 			} `json:"response_format"`
 			ChatTemplateKwargs map[string]bool `json:"chat_template_kwargs"`
 			ReasoningEffort    string          `json:"reasoning_effort"`
@@ -34,8 +41,11 @@ func TestChatProtocol(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 		}
-		if request.Model != "lfm3:1.7b" || request.Stream == nil || *request.Stream || request.MaxTokens != 160 || len(request.Messages) != 1 || request.ResponseFormat.Type != "json_schema" || request.ResponseFormat.Schema["type"] != "object" || request.ReasoningEffort != "none" {
+		if request.Model != "lfm3:1.7b" || request.Stream == nil || *request.Stream || request.MaxTokens != 160 || len(request.Messages) != 1 || request.ResponseFormat.Type != "json_schema" || request.ResponseFormat.JSONSchema.Schema["type"] != "object" || request.ReasoningEffort != "none" {
 			t.Errorf("corps incorrect : %+v", request)
+		}
+		if len(request.ResponseFormat.Schema) != 0 || request.ResponseFormat.JSONSchema.Name != "game_response" || !request.ResponseFormat.JSONSchema.Strict {
+			t.Error("schema must be nested under response_format.json_schema, not silently ignored")
 		}
 		if think, ok := request.ChatTemplateKwargs["enable_thinking"]; !ok || think {
 			t.Error("thinking non désactivé")
@@ -93,6 +103,58 @@ func TestReadyAndModelIdentity(t *testing.T) {
 			ready, err := c.Ready(context.Background())
 			if ready != scenario.ready || (err != nil) != scenario.wantError {
 				t.Fatalf("ready=%v err=%v", ready, err)
+			}
+		})
+	}
+}
+
+func TestVerifyModelFile(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "llama.gguf")
+	if err := os.WriteFile(want, []byte("test fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "alias.gguf")
+	if err := os.Symlink(want, link); err != nil {
+		t.Fatal(err)
+	}
+	props := func(path string) string {
+		body, _ := json.Marshal(map[string]string{"model_path": path})
+		return string(body)
+	}
+	for _, tc := range []struct {
+		name, body string
+		status     int
+		wantError  bool
+	}{
+		{"matching", props(want), 200, false},
+		{"symlink", props(link), 200, false},
+		{"different_directory", props(filepath.Join(t.TempDir(), "llama.gguf")), 200, true},
+		{"different_model", props(filepath.Join(filepath.Dir(want), "lfm3.gguf")), 200, true},
+		{"relative_path", props("llama.gguf"), 200, true},
+		{"missing_path", `{}`, 200, true},
+		{"malformed", `invalid`, 200, true},
+		{"unsupported", `{}`, 404, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" || r.URL.Path != "/props" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer server.Close()
+			c, err := llamacpp.New(server.URL, "same-alias", time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.VerifyModelFile(context.Background(), want); (err != nil) != tc.wantError {
+				t.Fatalf("verification error: %v", err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if err := c.VerifyModelFile(ctx, want); err == nil {
+				t.Fatal("cancellation ignored")
 			}
 		})
 	}

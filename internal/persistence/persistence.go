@@ -12,7 +12,7 @@ import (
 	"ai-venture/internal/strictjson"
 )
 
-const Version = 1
+const Version = 2
 const maxSaveBytes = 2 << 20
 
 type SaveFile struct {
@@ -73,11 +73,17 @@ func Load(path string, e *engine.Engine) error {
 	if err := strictjson.Decode(data, &save); err != nil {
 		return err
 	}
-	if save.Version != Version {
+	if save.Version != 1 && save.Version != Version {
 		return locale.Errorf("unsupported save version: %d", save.Version)
 	}
-	if save.ScenarioID != e.ScenarioID() || save.ScenarioHash != e.Fingerprint() {
+	matchingHash := save.ScenarioHash == e.Fingerprint() || (save.Version == 1 && save.ScenarioHash == e.LegacyFingerprint())
+	if save.ScenarioID != e.ScenarioID() || !matchingHash {
 		return locale.Errorf("save file does not match this version of the scenario")
+	}
+	if save.Version == 1 {
+		// Legacy snapshots did not record discoveries or a journal. Rebuild only
+		// what is accessible now, without inventing earlier events.
+		save.State.Knowledge, save.State.Journal = nil, nil
 	}
 	return e.Restore(save.State)
 }

@@ -14,6 +14,7 @@ import (
 	"ai-venture/internal/language"
 	"ai-venture/internal/locale"
 	"ai-venture/internal/persistence"
+	ragstore "ai-venture/internal/retrieval/sqlite"
 	"ai-venture/internal/terminal"
 	"ai-venture/internal/world"
 	"ai-venture/scenarios"
@@ -31,7 +32,7 @@ func run() (runErr error) {
 	langFlag := flag.String("lang", "en", "Game language / langue du jeu: en or fr")
 	offline := flag.Bool("offline", false, "Play without an LLM using a limited local grammar")
 	provider := flag.String("provider", "ollama", "Provider: ollama or llamacpp")
-	model := flag.String("model", env("OLLAMA_MODEL", "lfm3:1.7b"), "Ollama model or llama-server alias")
+	model := flag.String("model", "", "Model or alias (default: OLLAMA_MODEL/lfm3:1.7b for Ollama, GGUF filename for llama.cpp)")
 	host := flag.String("ollama-url", env("OLLAMA_HOST", "http://localhost:11434"), "Ollama service URL")
 	ollamaBinary := flag.String("ollama-bin", "ollama", "Path to the Ollama executable")
 	llamaURL := flag.String("llama-url", "http://127.0.0.1:8080", "llama-server URL, without /v1")
@@ -44,6 +45,8 @@ func run() (runErr error) {
 	savePath := flag.String("save", "", "Save file path (default: savegame-en.json or savegame-fr.json)")
 	load := flag.Bool("load", false, "Load the save file at startup")
 	noNarration := flag.Bool("no-narration", false, "Show only the engine facts")
+	rag := flag.Bool("rag", true, "Enrich narration with local SQLite FTS5 retrieval")
+	ragPath := flag.String("rag-db", "", "RAG cache path (default: <save file>.rag.sqlite)")
 	timeout := flag.Duration("timeout", 45*time.Second, "Timeout for each LLM call")
 	flag.Parse()
 	selected, err := locale.Parse(*langFlag)
@@ -83,6 +86,10 @@ func run() (runErr error) {
 	var interpreter language.Interpreter = language.Offline{Language: selected}
 	var narrator language.Narrator
 	if !*offline {
+		*model, err = resolveModel(*provider, *model, *gguf)
+		if err != nil {
+			return err
+		}
 		fmt.Println(selected.Text("Preparing %s (%s)...", *provider, *model))
 		client, service, err := startBackend(ctx, backendConfig{
 			provider: *provider, model: *model, ollamaURL: *host, ollamaBinary: *ollamaBinary,
@@ -101,10 +108,30 @@ func run() (runErr error) {
 		} else {
 			fmt.Println(selected.Text("Using an existing service; it will remain running after the game."))
 		}
+		if *provider == "llamacpp" && *gguf != "" {
+			fmt.Println(selected.Text("Verified GGUF: %s", *gguf))
+		}
 		llm := language.LLM{Client: client, Language: selected}
 		interpreter = llm
 		if !*noNarration {
 			narrator = llm
+			if *rag {
+				if *ragPath == "" {
+					*ragPath = *savePath + ".rag.sqlite"
+				}
+				openCtx, openCancel := context.WithTimeout(ctx, 2*time.Second)
+				store, err := ragstore.Open(openCtx, *ragPath)
+				openCancel()
+				if err != nil {
+					fmt.Println(selected.Text("RAG unavailable; continuing with engine facts: %s", selected.Error(err)))
+				} else {
+					defer func() { runErr = errors.Join(runErr, store.Close()) }()
+					narrator = language.RAGNarrator{LLM: llm, Engine: e, Search: store, OnError: func(err error) {
+						fmt.Println(selected.Text("RAG unavailable; continuing with engine facts: %s", selected.Error(err)))
+					}}
+					fmt.Println(selected.Text("RAG enabled: %s", *ragPath))
+				}
+			}
 		}
 		fmt.Println(selected.Text("LLM mode: %s via %s", *model, *provider))
 	} else {
