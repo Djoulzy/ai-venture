@@ -5,6 +5,7 @@ import gzip
 import hashlib
 import json
 import os
+import plistlib
 from pathlib import Path
 import re
 import shutil
@@ -67,7 +68,7 @@ def license_files(folder):
 
 def go_licenses(package):
     # Package dependencies select the modules actually linked for GOOS/GOARCH.
-    stream = go("list", "-mod=readonly", "-deps", "-json", "./cmd/aventure")
+    stream = go("list", "-mod=readonly", "-deps", "-json", "./cmd/aventure", "./cmd/catalogue")
     decoder = json.JSONDecoder()
     modules = {}
     while stream.strip():
@@ -117,12 +118,110 @@ def native_runtime(package, target_os, target_arch):
     return manifest
 
 
+def playable_content(source, destination):
+    # Explicit scenario/manifests, plus only images declared by that manifest.
+    # Do not copy the workspace, unrelated views, databases or save files.
+    for language in ("en", "fr"):
+        relative = Path(f"scenarios/providence-{language}.json")
+        copy(source / relative, destination / relative)
+    catalogue = Path("data/catalogue/providence")
+    manifest = catalogue / "lieux/lieux.json"
+    copy(source / manifest, destination / manifest)
+    copy(source / catalogue / "README.md", destination / catalogue / "README.md")
+    root = (source / catalogue).resolve()
+    for asset in json.loads((source / manifest).read_text())["assets"]:
+        path = (source / manifest.parent / asset["path"]).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError("Une image de Providence sort du dossier autorisé.")
+        copy(path, destination / catalogue / path.relative_to(root))
+
+
+def mac_application(destination, source, version):
+    contents = destination / "Contents"
+    copy(source / "aventure", contents / "MacOS/aventure", executable=True)
+    resources = contents / "Resources"
+    for name in ("README.md", "docs/catalogue.md", "docs/window.md"):
+        copy(source / name, resources / name)
+    manifest = json.loads((source / "BUILD.json").read_text())
+    manifest["executable"] = "../MacOS/aventure"
+    manifest.pop("catalogue_tool", None)
+    (resources / "BUILD.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    notices = (source / "THIRD_PARTY_NOTICES.md").read_text()
+    notices = notices.replace("`runtime/llama.cpp.LICENSE`", "`../MacOS/runtime/llama.cpp.LICENSE`")
+    (resources / "THIRD_PARTY_NOTICES.md").write_text(notices, encoding="utf-8")
+    for path in license_files(source):
+        copy(path, resources / path.name)
+    for path in sorted((source / "licenses").rglob("*")):
+        if path.is_file():
+            copy(path, resources / path.relative_to(source))
+    playable_content(source, resources)
+    if (source / "runtime/llama-server").exists():
+        for name in ("llama-server", "llama-server.build.json", "llama.cpp.LICENSE"):
+            copy(source / "runtime" / name, contents / "MacOS/runtime" / name, executable=name == "llama-server")
+    with (contents / "Info.plist").open("wb") as output:
+        plistlib.dump({
+            "CFBundleExecutable": "aventure", "CFBundleIdentifier": "dev.ai-venture.game",
+            "CFBundleName": "AI Venture", "CFBundleDisplayName": "AI Venture",
+            "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "0.1.0",
+            "CFBundleVersion": "1", "NSHighResolutionCapable": True,
+            "AIAdventureVersion": version,
+        }, output)
+
+
+def local_application(config):
+    version, target_os, _, with_llama = config
+    if target_os != "darwin":
+        raise ValueError("make app crée uniquement un bundle macOS ; utilisez make dist pour les autres systèmes.")
+    build = ROOT / "build"
+    build.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".application-", dir=build) as folder:
+        staging = Path(folder)
+        # An explicit staging tree contains no private databases, saves or models.
+        copy(ROOT / "bin/aventure", staging / "source/aventure", executable=True)
+        playable_content(ROOT, staging / "source")
+        if with_llama:
+            native = native_runtime(staging / "source", target_os, config[2])
+        else:
+            native = None
+        source = staging / "source"
+        copy(ROOT / "docs/distribution.md", source / "README.md")
+        copy(ROOT / "docs/catalogue.md", source / "docs/catalogue.md")
+        copy(ROOT / "docs/window.md", source / "docs/window.md")
+        for path in license_files(ROOT):
+            copy(path, source / path.name)
+        modules, notices = go_licenses(source)
+        if native:
+            notices.append("- llama.cpp et ses dépendances natives : `../MacOS/runtime/llama.cpp.LICENSE` et `licenses/llama.cpp/`.")
+        (source / "THIRD_PARTY_NOTICES.md").write_text("\n".join(notices) + "\n", encoding="utf-8")
+        (source / "BUILD.json").write_text(json.dumps({
+            "name": "ai-venture", "version": version, "os": target_os,
+            "architecture": config[2], "go": go("version").strip(), "cgo": False,
+            "executable": "../MacOS/aventure", "sha256": digest(source / "aventure"),
+            "modules": {name: module.get("Version", "local") for name, module in sorted(modules.items())},
+            "llama_server": native,
+        }, indent=2) + "\n", encoding="utf-8")
+        bundle = staging / "AI Venture.app"
+        mac_application(bundle, staging / "source", version)
+        destination = build / "AI Venture.app"
+        backup = staging / "previous.app"
+        if destination.exists():
+            destination.rename(backup)
+        try:
+            bundle.rename(destination)
+        except OSError:
+            if backup.exists():
+                backup.rename(destination)
+            raise
+        print(f"Application : {destination}")
+
+
 def package_release(config):
     version, target_os, target_arch, with_llama = config
     name = f"ai-venture-{version}-{target_os}-{target_arch}"
     if not with_llama:
         name += "-game-only"
     executable = "aventure.exe" if target_os == "windows" else "aventure"
+    catalogue_executable = "catalogue.exe" if target_os == "windows" else "catalogue"
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".package-", dir=dist) as temp:
@@ -130,17 +229,22 @@ def package_release(config):
         package = staging / name
         binary = package / executable
         copy(ROOT / "bin" / executable, binary, executable=True)
-        settings = {}
-        for line in go("version", "-m", str(binary)).splitlines():
-            fields = line.split()
-            if len(fields) == 2 and fields[0] == "build" and "=" in fields[1]:
-                key, value = fields[1].split("=", 1)
-                settings[key] = value
-        if any(settings.get(key) != value for key, value in {
-            "GOOS": target_os, "GOARCH": target_arch, "CGO_ENABLED": "0",
-        }.items()):
-            raise ValueError("Le binaire Go ne correspond pas à la cible sans CGO ; relancez make dist.")
+        copy(ROOT / "bin" / catalogue_executable, package / catalogue_executable, executable=True)
+        for built in (binary, package / catalogue_executable):
+            settings = {}
+            for line in go("version", "-m", str(built)).splitlines():
+                fields = line.split()
+                if len(fields) == 2 and fields[0] == "build" and "=" in fields[1]:
+                    key, value = fields[1].split("=", 1)
+                    settings[key] = value
+            if any(settings.get(key) != value for key, value in {
+                "GOOS": target_os, "GOARCH": target_arch, "CGO_ENABLED": "0",
+            }.items()):
+                raise ValueError("Le binaire Go ne correspond pas à la cible sans CGO ; relancez make dist.")
         copy(ROOT / "docs/distribution.md", package / "README.md")
+        copy(ROOT / "docs/catalogue.md", package / "docs/catalogue.md")
+        copy(ROOT / "docs/window.md", package / "docs/window.md")
+        playable_content(ROOT, package)
         for source in license_files(ROOT):
             copy(source, package / source.name)
         models = package / "models"
@@ -161,10 +265,13 @@ def package_release(config):
             "os": target_os, "architecture": target_arch,
             "go": go("version").strip(), "cgo": False,
             "executable": executable, "sha256": digest(binary),
+            "catalogue_tool": {"executable": catalogue_executable, "sha256": digest(package / catalogue_executable)},
             "modules": {name: module.get("Version", "local") for name, module in sorted(modules.items())},
             "llama_server": native,
         }
         (package / "BUILD.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        if target_os == "darwin":
+            mac_application(package / "AI Venture.app", package, version)
         archive_name = name + ".tar.gz"
         archive = staging / archive_name
         # Stable ordering and metadata; no absolute workspace paths in the tar.
@@ -174,7 +281,7 @@ def package_release(config):
                     info = tar.gettarinfo(str(path), arcname=str(path.relative_to(staging)))
                     info.uid = info.gid = info.mtime = 0
                     info.uname = info.gname = ""
-                    info.mode = 0o755 if path.is_dir() or path == binary or path == package / "runtime/llama-server" else 0o644
+                    info.mode = 0o755 if path.is_dir() or os.access(path, os.X_OK) else 0o644
                     if path.is_file():
                         with path.open("rb") as source:
                             tar.addfile(info, source)
@@ -193,10 +300,12 @@ if __name__ == "__main__":
         config = configuration()
         if sys.argv[1:] == ["--check"]:
             pass
+        elif sys.argv[1:] == ["--app"]:
+            local_application(config)
         elif not sys.argv[1:]:
             package_release(config)
         else:
-            raise ValueError("Usage : package-release.py [--check]")
+            raise ValueError("Usage : package-release.py [--check|--app]")
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         print(f"Création de la distribution impossible : {error}", file=sys.stderr)
         sys.exit(1)

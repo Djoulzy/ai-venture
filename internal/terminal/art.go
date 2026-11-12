@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"ai-venture/internal/illustration"
+	"ai-venture/internal/presentation"
 )
 
 type cachedIllustration struct {
@@ -61,4 +62,7 @@ func (s *Session) illustrate(ctx context.Context, generate bool) {
 		s.artCache[view.Location] = cached
 	}
 	_ = (Printer{Output: s.Output, Color: s.Color}).Draw(cached.frame)
+	if s.Observer != nil {
+		s.Observer(presentation.Event{Kind: presentation.Art, Frame: cached.frame.Clone()})
+	}
 }

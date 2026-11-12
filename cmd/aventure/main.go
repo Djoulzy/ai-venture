@@ -4,18 +4,24 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"ai-venture/internal/catalogue"
+	"ai-venture/internal/desktop"
 	"ai-venture/internal/engine"
 	"ai-venture/internal/illustration"
 	"ai-venture/internal/language"
 	"ai-venture/internal/locale"
 	"ai-venture/internal/persistence"
+	"ai-venture/internal/presentation"
 	ragstore "ai-venture/internal/retrieval/sqlite"
 	"ai-venture/internal/terminal"
+	"ai-venture/internal/visuals"
 	"ai-venture/internal/world"
 	"ai-venture/scenarios"
 )
@@ -31,6 +37,8 @@ func main() {
 
 func run() (runErr error) {
 	langFlag := flag.String("lang", "en", "Game language / langue du jeu: en or fr")
+	uiFlag := flag.String("ui", "window", "Interface: window or terminal (default: independent graphical window)")
+	dataDir := flag.String("data-dir", "", "Writable game data directory (default: current folder, app bundle: user configuration folder)")
 	colorFlag := flag.String("color", "auto", "ANSI colors: auto, always or never (auto respects NO_COLOR and TERM=dumb)")
 	offline := flag.Bool("offline", false, "Play without an LLM using a limited local grammar")
 	provider := flag.String("provider", "ollama", "Provider: ollama or llamacpp")
@@ -48,6 +56,9 @@ func run() (runErr error) {
 	load := flag.Bool("load", false, "Load the save file at startup")
 	noNarration := flag.Bool("no-narration", false, "Disable prose narration (location illustrations use -art)")
 	art := flag.Bool("art", false, "Generate LLM location illustrations, at most 80 columns by 24 lines")
+	cataloguePath := flag.String("catalogue", "", "Permanent catalogue used by scenario references and visual assets")
+	visualsEnabled := flag.Bool("visuals", false, "Export engine-composed PNG scenes (works offline)")
+	visualDirectory := flag.String("visual-dir", "", "PNG output directory (default: <save file>.visuals)")
 	rag := flag.Bool("rag", true, "Enrich narration with local SQLite FTS5 retrieval")
 	ragPath := flag.String("rag-db", "", "RAG cache path (default: <save file>.rag.sqlite)")
 	timeout := flag.Duration("timeout", 45*time.Second, "Timeout for each LLM call")
@@ -60,7 +71,10 @@ func run() (runErr error) {
 	if err != nil {
 		return err
 	}
-	output := terminal.NewPrinter(os.Stdout, colorMode)
+	if *uiFlag != "window" && *uiFlag != "terminal" {
+		return locale.Errorf("unknown interface %q: use window or terminal", *uiFlag)
+	}
+	saveProvided := *savePath != ""
 	if *savePath == "" {
 		*savePath = "savegame-" + string(selected) + ".json"
 	}
@@ -72,92 +86,161 @@ func run() (runErr error) {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	// Closing stdin also unblocks the prompt on Ctrl+C; HTTP calls use ctx directly.
-	go func() { <-ctx.Done(); _ = os.Stdin.Close() }()
-	var source world.Source = scenarios.Demo{Language: selected}
-	if *scenarioPath != "" {
-		source = world.FileSource{Path: *scenarioPath}
+	executable, _ := os.Executable()
+	resources := bundleResources(executable)
+	if resources != "" && *uiFlag == "window" && *scenarioPath == "" && *cataloguePath == "" && !saveProvided {
+		*savePath = "savegame-providence-" + string(selected) + ".json"
 	}
-	w, err := source.Load(ctx)
-	if err != nil {
-		return locale.Errorf("scenario: %w", err)
+	if resources != "" && *dataDir == "" {
+		configDir, err := os.UserConfigDir()
+		if err != nil {
+			return err
+		}
+		*dataDir = filepath.Join(configDir, "ai-venture")
 	}
-	e, err := engine.NewWithLanguage(w, selected)
-	if err != nil {
+	if *dataDir != "" && !saveProvided {
+		*savePath = filepath.Join(*dataDir, *savePath)
+	}
+	play := func(ctx context.Context, input io.Reader, writer io.Writer, observe presentation.Observer, forceOffline bool) (runErr error) {
+		output := terminal.NewPrinter(writer, colorMode)
+		announce := func(style terminal.Style, message string) {
+			output.Println(style, message)
+			if observe != nil {
+				observe(presentation.Event{Kind: presentation.Message, Tone: terminal.Tone(style), Text: presentation.Clean(message)})
+			}
+		}
+		useOffline := *offline || forceOffline || (resources != "" && len(os.Args) == 1)
+		if *dataDir != "" {
+			if err := os.MkdirAll(*dataDir, 0700); err != nil {
+				return err
+			}
+		}
+		if resources != "" && *uiFlag == "window" && *scenarioPath == "" && *cataloguePath == "" {
+			var err error
+			*scenarioPath, *cataloguePath, err = prepareBundle(ctx, resources, *dataDir, selected)
+			if err != nil {
+				return err
+			}
+		}
+		var source world.Source = scenarios.Demo{Language: selected}
+		if *scenarioPath != "" {
+			source = world.FileSource{Path: *scenarioPath}
+		}
+		w, err := source.Load(ctx)
+		if err != nil {
+			return locale.Errorf("scenario: %w", err)
+		}
+		var content *catalogue.Store
+		if *cataloguePath != "" {
+			openCtx, openCancel := context.WithTimeout(ctx, 5*time.Second)
+			content, err = catalogue.Open(openCtx, *cataloguePath, false)
+			if err == nil {
+				w, err = content.Bind(openCtx, w, selected)
+			}
+			openCancel()
+			if err != nil {
+				if content != nil {
+					_ = content.Close()
+				}
+				return err
+			}
+			defer func() { runErr = errors.Join(runErr, content.Close()) }()
+		} else if len(w.CatalogueDocuments) > 0 || *visualsEnabled {
+			return locale.Errorf("this scenario or -visuals requires -catalogue")
+		}
+		e, err := engine.NewWithLanguage(w, selected)
+		if err != nil {
+			return err
+		}
+		if *load {
+			if err := persistence.Load(*savePath, e); err != nil {
+				return err
+			}
+		}
+		var interpreter language.Interpreter = language.Offline{Language: selected}
+		var narrator language.Narrator
+		var illustrator illustration.Illustrator
+		if !useOffline {
+			*model, err = resolveModel(*provider, *model, *gguf)
+			if err != nil {
+				return err
+			}
+			announce(terminal.StyleInfo, selected.Text("Preparing %s (%s)...", *provider, *model))
+			client, service, err := startBackend(ctx, backendConfig{
+				provider: *provider, model: *model, ollamaURL: *host, ollamaBinary: *ollamaBinary,
+				llamaURL: *llamaURL, llamaBinary: *llamaBinary, gguf: *gguf, llamaContext: *llamaContext,
+				autoStart: *autoStart, timeout: *timeout, startupTimeout: *startupTimeout,
+			})
+			if err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+			defer func() { runErr = errors.Join(runErr, service.Close()) }()
+			if service.Owned() {
+				announce(terminal.StyleInfo, selected.Text("Local service started; it will stop when the game closes."))
+			} else {
+				announce(terminal.StyleInfo, selected.Text("Using an existing service; it will remain running after the game."))
+			}
+			if *provider == "llamacpp" && *gguf != "" {
+				announce(terminal.StyleInfo, selected.Text("Verified GGUF: %s", *gguf))
+			}
+			llm := language.LLM{Client: client, Language: selected}
+			interpreter = llm
+			if *art {
+				illustrator = illustration.LLM{Client: client, Language: selected}
+				announce(terminal.StyleInfo, selected.Text("Location illustrations enabled (maximum 80 x 24)."))
+			}
+			if !*noNarration {
+				narrator = llm
+				if *rag {
+					if *ragPath == "" {
+						*ragPath = *savePath + ".rag.sqlite"
+					}
+					openCtx, openCancel := context.WithTimeout(ctx, 2*time.Second)
+					store, err := ragstore.Open(openCtx, *ragPath)
+					openCancel()
+					if err != nil {
+						announce(terminal.StyleWarning, selected.Text("RAG unavailable; continuing with engine facts: %s", selected.Error(err)))
+					} else {
+						defer func() { runErr = errors.Join(runErr, store.Close()) }()
+						narrator = language.RAGNarrator{LLM: llm, Engine: e, Search: store, OnError: func(err error) {
+							announce(terminal.StyleWarning, selected.Text("RAG unavailable; continuing with engine facts: %s", selected.Error(err)))
+						}}
+						announce(terminal.StyleInfo, selected.Text("RAG enabled: %s", *ragPath))
+					}
+				}
+			}
+			announce(terminal.StyleInfo, selected.Text("LLM mode: %s via %s", *model, *provider))
+		} else {
+			announce(terminal.StyleInfo, selected.Text("Offline mode: simple commands (help)."))
+		}
+		announce(terminal.StyleInfo, selected.Text("Language: English"))
+		var sceneRenderer visuals.Renderer
+		if *visualsEnabled || (*uiFlag == "window" && content != nil && len(w.Visuals) > 0) {
+			if *visualDirectory == "" {
+				*visualDirectory = *savePath + ".visuals"
+			}
+			sceneRenderer = visuals.Compositor{Assets: content, Directory: *visualDirectory}
+			announce(terminal.StyleInfo, selected.Text("PNG scene export enabled: %s", *visualDirectory))
+		}
+		s := terminal.Session{Engine: e, Interpreter: interpreter, Narrator: narrator, Input: input, Output: writer, Observer: observe,
+			Illustrator: illustrator, Visuals: sceneRenderer, Color: output.Color, SavePath: *savePath, Timeout: *timeout, Title: w.Title, Introduction: w.Introduction}
+		err = s.Run(ctx)
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+			return nil
+		}
 		return err
 	}
-	if *load {
-		if err := persistence.Load(*savePath, e); err != nil {
-			return err
-		}
+	if *uiFlag == "terminal" {
+		// Only the terminal frontend needs stdin closed to interrupt a read.
+		go func() { <-ctx.Done(); _ = os.Stdin.Close() }()
+		return play(ctx, os.Stdin, os.Stdout, nil, false)
 	}
-	var interpreter language.Interpreter = language.Offline{Language: selected}
-	var narrator language.Narrator
-	var illustrator illustration.Illustrator
-	if !*offline {
-		*model, err = resolveModel(*provider, *model, *gguf)
-		if err != nil {
-			return err
-		}
-		output.Println(terminal.StyleInfo, selected.Text("Preparing %s (%s)...", *provider, *model))
-		client, service, err := startBackend(ctx, backendConfig{
-			provider: *provider, model: *model, ollamaURL: *host, ollamaBinary: *ollamaBinary,
-			llamaURL: *llamaURL, llamaBinary: *llamaBinary, gguf: *gguf, llamaContext: *llamaContext,
-			autoStart: *autoStart, timeout: *timeout, startupTimeout: *startupTimeout,
-		})
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return err
-		}
-		defer func() { runErr = errors.Join(runErr, service.Close()) }()
-		if service.Owned() {
-			output.Println(terminal.StyleInfo, selected.Text("Local service started; it will stop when the game closes."))
-		} else {
-			output.Println(terminal.StyleInfo, selected.Text("Using an existing service; it will remain running after the game."))
-		}
-		if *provider == "llamacpp" && *gguf != "" {
-			output.Println(terminal.StyleSuccess, selected.Text("Verified GGUF: %s", *gguf))
-		}
-		llm := language.LLM{Client: client, Language: selected}
-		interpreter = llm
-		if *art {
-			illustrator = illustration.LLM{Client: client, Language: selected}
-			output.Println(terminal.StyleInfo, selected.Text("Location illustrations enabled (maximum 80 x 24)."))
-		}
-		if !*noNarration {
-			narrator = llm
-			if *rag {
-				if *ragPath == "" {
-					*ragPath = *savePath + ".rag.sqlite"
-				}
-				openCtx, openCancel := context.WithTimeout(ctx, 2*time.Second)
-				store, err := ragstore.Open(openCtx, *ragPath)
-				openCancel()
-				if err != nil {
-					output.Println(terminal.StyleWarning, selected.Text("RAG unavailable; continuing with engine facts: %s", selected.Error(err)))
-				} else {
-					defer func() { runErr = errors.Join(runErr, store.Close()) }()
-					narrator = language.RAGNarrator{LLM: llm, Engine: e, Search: store, OnError: func(err error) {
-						output.Println(terminal.StyleWarning, selected.Text("RAG unavailable; continuing with engine facts: %s", selected.Error(err)))
-					}}
-					output.Println(terminal.StyleInfo, selected.Text("RAG enabled: %s", *ragPath))
-				}
-			}
-		}
-		output.Println(terminal.StyleInfo, selected.Text("LLM mode: %s via %s", *model, *provider))
-	} else {
-		output.Println(terminal.StyleInfo, selected.Text("Offline mode: simple commands (help)."))
-	}
-	output.Println(terminal.StyleInfo, selected.Text("Language: English"))
-	s := terminal.Session{Engine: e, Interpreter: interpreter, Narrator: narrator, Input: os.Stdin, Output: os.Stdout,
-		Illustrator: illustrator, Color: output.Color, SavePath: *savePath, Timeout: *timeout, Title: w.Title, Introduction: w.Introduction}
-	err = s.Run(ctx)
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
-		return nil
-	}
-	return err
+	return desktop.Run(ctx, desktop.Config{Language: selected, Start: func(ctx context.Context, input io.Reader, observe presentation.Observer, forceOffline bool) error {
+		return play(ctx, input, io.Discard, observe, forceOffline)
+	}})
 }
 
 func env(name, fallback string) string {

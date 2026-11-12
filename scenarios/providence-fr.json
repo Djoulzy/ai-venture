@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "id": "providence_le_seuil_fr",
+  "title": "Providence — Le seuil",
+  "introduction": "Providence, 1921. Une adresse griffonnée vous a conduit devant une demeure abandonnée. Votre premier objectif est d'en ouvrir la porte. Sur le perron repose une clé ancienne ; examinez-la avant de tenter la serrure. Cette première scène se déroule entièrement devant la maison.",
+  "start": "demeure_coloniale",
+  "locations": {
+    "demeure_coloniale": {
+      "name": "Devant la demeure coloniale",
+      "description": "Au détour d'une ruelle brumeuse de Providence se dresse une vieille demeure coloniale aux murs de bois décrépit, envahis par un lierre noirâtre. Derrière ses fenêtres obscures vacille parfois une lueur maladive, bien que la maison soit abandonnée depuis des décennies. Les arbres noueux semblent se pencher vers elle, comme pour étouffer quelque secret indicible. Une étrange impression vous saisit : quelque chose, à l'intérieur, attend votre venue.",
+      "exits": {}
+    }
+  },
+  "items": {
+    "cle_ancienne": {
+      "name": "la clé ancienne",
+      "description": "Une clé de fer au manche torsadé. Son panneton semble correspondre à la serrure de la porte d'entrée.",
+      "portable": true,
+      "location": "demeure_coloniale"
+    },
+    "porte": {
+      "name": "la porte d'entrée",
+      "description": "Une lourde porte de bois sombre, munie d'une vieille serrure de fer. La clé ancienne semble pouvoir l'actionner.",
+      "portable": false,
+      "location": "demeure_coloniale"
+    }
+  },
+  "flags": {"porte_ouverte": false},
+  "rules": [
+    {
+      "id": "ouvrir_porte",
+      "tool": "cle_ancienne",
+      "target": "porte",
+      "location": "demeure_coloniale",
+      "conditions": [{"flag": "porte_ouverte", "value": false}],
+      "effects": {"porte_ouverte": true},
+      "message": "La clé tourne avec un déclic. La porte s'entrouvre et une bouffée d'air froid vous effleure. Vous restez sur le seuil, face à l'obscurité de la demeure.",
+      "blocked_message": "La porte est déjà ouverte."
+    }
+  ],
+  "goal": [{"flag": "porte_ouverte", "value": true}],
+  "catalogue_documents": [
+    {"id": "histoire_demeure", "entry": "colonial_house", "location": "demeure_coloniale"}
+  ],
+  "visuals": [
+    {"asset": "house_background", "location": "demeure_coloniale", "x": 0, "y": 0, "width": 100, "height": 100, "z": 0}
+  ]
+}

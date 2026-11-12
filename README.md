@@ -2,6 +2,8 @@
 
 Prototype de jeu d'aventure textuelle en Go, en anglais ou en français, inspiré des années 1980–1990. LFM3 interprète les commandes et enrichit la narration via Ollama ou llama.cpp ; le moteur Go décide seul des changements d'état. Le jeu peut démarrer et arrêter son service d'inférence local.
 
+Le jeu s'ouvre désormais dans une **fenêtre graphique indépendante** : scène PNG, objets, inventaire, journal et saisie des commandes. Les options LLM restent identiques. `-ui terminal` conserve l'interface en ligne de commande. Voir le [guide de la fenêtre](docs/window.md) pour les raccourcis et les visuels.
+
 La langue se choisit au lancement avec `-lang en` (défaut) ou `-lang fr`, avec ou sans LLM. Ce choix sélectionne les prompts d'interprétation et de narration, les messages du terminal, la grammaire locale et la variante du scénario.
 
 ```sh
@@ -19,14 +21,16 @@ go run ./cmd/aventure -provider llamacpp -gguf ./models/LFM3-1.7B-Q8_0.gguf -lan
 
 Le scénario embarqué propose quatre lieux, des objets transportables, une porte verrouillée et une balise à rallumer. Ses variantes sont définies dans [scenarios/lighthouse.json](scenarios/lighthouse.json) (anglais) et [scenarios/phare.json](scenarios/phare.json) (français). Un fichier fourni avec `-scenario` conserve ses propres textes et identifiants : le jeu ne le traduit pas automatiquement.
 
-Les sorties utilisent des couleurs ANSI : lieux et sorties en cyan, objets en jaune, faits et sauvegardes réussies en vert, narration en magenta, avertissements en jaune et erreurs en rouge. Les descriptions restent dans la couleur habituelle du terminal.
+Le catalogue **Providence** possède aussi une première scène jouable devant sa demeure coloniale, avec deux variantes FR/EN et l'image de façade. Le [guide de lancement Providence](data/catalogue/providence/README.md) explique l'import, le démarrage hors ligne ou avec un LLM, et la sauvegarde.
+
+Avec `-ui terminal`, les sorties utilisent des couleurs ANSI : lieux et sorties en cyan, objets en jaune, faits et sauvegardes réussies en vert, narration en magenta, avertissements en jaune et erreurs en rouge. Les descriptions restent dans la couleur habituelle du terminal. La fenêtre utilise sa propre palette et ignore `-color`.
 
 `-color auto` est le défaut : les couleurs sont activées sur un terminal et désactivées pour les fichiers et les pipes, avec `NO_COLOR` non vide ou avec `TERM=dumb`. `-color always` les force ; `-color never` les désactive. Ces options fonctionnent aussi en mode hors ligne et dans les deux langues.
 
 ```sh
-go run ./cmd/aventure -offline -lang fr
-go run ./cmd/aventure -color never
-go run ./cmd/aventure -offline -color always
+go run ./cmd/aventure -ui terminal -offline -lang fr
+go run ./cmd/aventure -ui terminal -color never
+go run ./cmd/aventure -ui terminal -offline -color always
 ```
 
 ## Démarrage sans modèle
@@ -42,14 +46,15 @@ go run ./cmd/aventure -offline
 Le Makefile fournit un build Go sans CGO, avec chemins de développement retirés et symboles de débogage supprimés :
 
 ```sh
-make                    # bin/aventure (aventure.exe pour Windows)
+make                    # bin/aventure et bin/catalogue (.exe pour Windows)
 make check              # tests, détection de courses concurrentes et go vet
+make app                # build/AI Venture.app (macOS, lancement par double-clic)
 make dist VERSION=0.1.0  # archive complète pour la machine qui compile
 ```
 
 `make dist` compile le jeu puis le runtime llama.cpp avec le script existant. Il exige donc aussi les outils natifs décrits dans [runtime/README.md](runtime/README.md) et Python 3. Le premier lancement peut télécharger les dépendances Go, les sources llama.cpp et CMake. Les poids GGUF et les données de partie ne sont jamais copiés dans l'archive.
 
-Le résultat est `dist/ai-venture-0.1.0-darwin-arm64.tar.gz` sur un Mac ARM64, accompagné de son fichier `.sha256`. Le dossier archivé contient `aventure`, `runtime/llama-server`, ses métadonnées, un dossier `models/` à compléter, les licences et notices des dépendances Go/natives, un manifeste `BUILD.json` et un guide de lancement. Les scénarios FR/EN et SQLite sont embarqués dans le jeu ; le destinataire n'a pas besoin de Go. Le runtime utilise les bibliothèques du système cible. Le guide inclus est [docs/distribution.md](docs/distribution.md).
+Le résultat est `dist/ai-venture-0.1.0-darwin-arm64.tar.gz` sur un Mac ARM64, accompagné de son fichier `.sha256`. Le dossier archivé contient `aventure`, `catalogue`, `runtime/llama-server`, ses métadonnées, les scénarios et le catalogue Providence, un dossier `models/` à compléter, les licences Go/natives et un manifeste `BUILD.json`. Sur macOS, il contient aussi **AI Venture.app**, qui lance directement Providence hors ligne et conserve les données dans le dossier utilisateur. Le destinataire n'a pas besoin de Go. Le runtime utilise les bibliothèques du système cible. Le guide inclus est [docs/distribution.md](docs/distribution.md).
 
 Pour distribuer uniquement le jeu, sans compiler ni inclure llama-server :
 
@@ -144,8 +149,13 @@ Il s'agit d'un wrapper de processus et d'un adaptateur HTTP, sans CGO. Une distr
 | `-rag` | `true` | Enrichir la narration par une recherche SQLite FTS5 |
 | `-rag-db` | `<save>.rag.sqlite` | Chemin du cache documentaire local |
 | `-lang` | `en` | Langue du jeu : `en` ou `fr` |
+| `-ui` | `window` | Fenêtre indépendante ou interface `terminal` |
+| `-data-dir` | dossier courant ; dossier utilisateur pour le `.app` | Dossier de sauvegardes et données générées |
 | `-color` | `auto` | Couleurs ANSI : `auto`, `always` ou `never` |
 | `-art` | `false` | Illustrations LLM des lieux, au maximum 80 colonnes et 24 lignes |
+| `-catalogue` | vide | Catalogue SQLite permanent des références du scénario |
+| `-visuals` | `false` | Exporter les PNG en mode terminal ; automatique dans la fenêtre avec un scénario illustré |
+| `-visual-dir` | `<save>.visuals` | Dossier des images PNG composées |
 | `-provider` | `ollama` | Choisir `ollama` ou `llamacpp` |
 | `-model` | Ollama : `OLLAMA_MODEL` ou `lfm3:1.7b` ; llama.cpp : nom du GGUF | Modèle Ollama ou alias du serveur llama.cpp |
 | `-auto-start` | `true` | Démarrer le service local uniquement si la connexion est refusée |
@@ -168,6 +178,18 @@ L'arrêt des groupes de processus et de leurs descendants est implémenté pour 
 Le processus llama.cpp géré reçoit des options explicites et `--offline`. Il n'hérite pas des variables `LLAMA_*` du parent, afin de ne pas activer une autre configuration de modèle, d'authentification ou de serveur. Pour une configuration avancée, lancer le serveur soi-même puis utiliser `-auto-start=false`.
 
 ## Mémoire documentaire locale (RAG)
+
+Un **catalogue permanent importable**, distinct de ce cache, prépare vos lieux, personnages, monstres, objets et situations, avec leurs images :
+
+```sh
+make build
+./bin/catalogue import -db catalogue.sqlite -source data/catalogue/providence
+./bin/catalogue search -db catalogue.sqlite -lang fr -query Providence
+./bin/aventure -offline -lang fr -scenario scenarios/providence-fr.json \
+  -catalogue catalogue.sqlite -save savegame-providence-fr.json -visuals
+```
+
+Go compose fonds et sprites en PNG selon les objets présents et les conditions du scénario. La fenêtre affiche directement chaque scène et la met à jour après les actions ; le terminal affiche son chemin avec `-visuals`. Les images importées restent dans SQLite ; elles ne sont pas envoyées au LLM. Le guide [docs/catalogue.md](docs/catalogue.md) décrit les manifestes, les imports atomiques, les liens avec le RAG et le placement des calques. Cette bibliothèque ne génère pas encore de scénario automatiquement et n'ajoute pas de dialogues ou combats.
 
 Le RAG est activé par défaut avec la narration LLM, pour Ollama comme pour llama.cpp. Le jeu crée `savegame-en.json.rag.sqlite` ou `savegame-fr.json.rag.sqlite` à côté de la sauvegarde choisie. Le dossier doit exister. Aucun modèle d'embeddings ni service supplémentaire n'est requis.
 
@@ -208,7 +230,7 @@ go run ./cmd/aventure -lang en -provider llamacpp \
   -gguf ./models/llama-3.2-3b-instruct-q4_k_m.gguf -art
 ```
 
-Le dessin comporte **au maximum 80 colonnes et 24 lignes**, espaces compris. Cette limite concerne le dessin, sans bordure ni légende ajoutées ; la description et les commandes continuent de défiler dans le terminal. Prévoir un terminal d'au moins 80 colonnes pour éviter le repli visuel des lignes.
+Le dessin comporte **au maximum 80 colonnes et 24 lignes**, espaces compris. La fenêtre l'affiche en remplacement lorsqu'aucune scène PNG n'est disponible. Avec `-ui terminal`, cette limite concerne le dessin, sans bordure ni légende ajoutées ; prévoir un terminal d'au moins 80 colonnes pour éviter le repli visuel des lignes.
 
 Le modèle reçoit uniquement le décor visible et renvoie un JSON `lines`, chaque ligne ayant un `text` ASCII imprimable et un `color` parmi `default`, `cyan`, `yellow`, `green`, `blue`, `magenta`, `red`, `gray`. Go valide le document entier avant de l'afficher : lignes trop longues ou trop nombreuses, Unicode, tabulations, séquences ANSI et champs inattendus sont refusés. Le moteur ajoute les couleurs de sa propre palette ; `-color never` fournit le même dessin en ASCII simple. Les codes ANSI ne comptent pas dans les 80 colonnes visibles.
 
@@ -256,6 +278,8 @@ internal/retrieval/  Contrat de recherche et budgets du contexte
 internal/retrieval/sqlite/ Cache FTS5 transactionnel des souvenirs autorisés
 internal/persistence/ Sauvegarde et chargement atomiques
 internal/terminal/   Boucle de jeu, commandes locales et affichage
+internal/presentation/ Événements structurés et lecture de commandes annulable
+internal/desktop/    Fenêtre native Ebitengine, journal, scènes et saisie
 internal/strictjson/ Décodage JSON strict aux frontières
 scenarios/           Scénario JSON embarqué
 ```

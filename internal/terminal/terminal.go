@@ -14,6 +14,8 @@ import (
 	"ai-venture/internal/language"
 	"ai-venture/internal/locale"
 	"ai-venture/internal/persistence"
+	"ai-venture/internal/presentation"
+	"ai-venture/internal/visuals"
 )
 
 type Session struct {
@@ -21,6 +23,8 @@ type Session struct {
 	Interpreter  language.Interpreter
 	Narrator     language.Narrator        // nil selects canonical descriptions only
 	Illustrator  illustration.Illustrator // nil disables location art
+	Visuals      visuals.Renderer         // deterministic PNG composition, no inference
+	Observer     presentation.Observer    // optional structured frontend, never parsed screen text
 	Input        io.Reader
 	Output       io.Writer
 	Color        bool // resolved by NewPrinter; the zero value keeps output plain
@@ -29,6 +33,7 @@ type Session struct {
 	Title        string
 	Introduction string
 	artCache     map[string]cachedIllustration
+	inView       bool
 }
 
 const help = `Game commands (examples):
@@ -62,11 +67,38 @@ func (s *Session) printStyle(style Style, format string, args ...any) {
 			args[i] = s.Engine.Language().Error(err)
 		}
 	}
-	Printer{Output: s.Output, Color: s.Color}.Println(style, s.Engine.Language().Text(format, args...))
+	text := safe(s.Engine.Language().Text(format, args...))
+	Printer{Output: s.Output, Color: s.Color}.Println(style, text)
+	if s.Observer != nil && !s.inView {
+		s.Observer(presentation.Event{Kind: presentation.Message, Tone: Tone(style), Text: text})
+	}
 }
 
-func (s *Session) showView() {
+func Tone(style Style) presentation.Tone {
+	switch style {
+	case StyleInfo:
+		return presentation.Info
+	case StyleFact:
+		return presentation.Fact
+	case StyleNarration:
+		return presentation.Narration
+	case StyleSuccess:
+		return presentation.Success
+	case StyleWarning:
+		return presentation.Warning
+	case StyleError:
+		return presentation.Error
+	default:
+		return presentation.Plain
+	}
+}
+
+func (s *Session) showView(ctx context.Context) {
 	v := s.Engine.View()
+	if s.Observer != nil {
+		s.Observer(presentation.Event{Kind: presentation.View, View: v, Turn: s.Engine.Snapshot().Turn})
+	}
+	s.inView = true
 	s.printStyle(StyleLocation, "\n— %s —", v.Name)
 	s.print("%s", v.Description)
 	items := []string{}
@@ -94,6 +126,22 @@ func (s *Session) showView() {
 	if v.Completed {
 		s.printStyle(StyleSuccess, "Objective complete: the adventure is over. You can still explore or save.")
 	}
+	s.inView = false
+	if s.Visuals != nil {
+		visualCtx, cancel := context.WithTimeout(ctx, s.Timeout)
+		path, err := s.Visuals.Render(visualCtx, v)
+		cancel()
+		if err != nil {
+			if ctx.Err() == nil {
+				s.printStyle(StyleWarning, "[Scene image unavailable; the engine facts still apply.]")
+			}
+		} else if path != "" {
+			s.printStyle(StyleInfo, "Scene image: %s", path)
+			if s.Observer != nil {
+				s.publishScene(ctx, path)
+			}
+		}
+	}
 }
 
 func (s *Session) narrate(ctx context.Context, result engine.Result) {
@@ -114,10 +162,15 @@ func (s *Session) Run(ctx context.Context) error {
 	if s.Engine == nil || s.Interpreter == nil || s.Input == nil || s.Output == nil || s.Timeout <= 0 || s.SavePath == "" {
 		return locale.Errorf("session configuration is incomplete")
 	}
+	s.inView = true
 	s.printStyle(StyleTitle, "\n%s", s.Title)
+	s.inView = false
+	if s.Observer != nil {
+		s.Observer(presentation.Event{Kind: presentation.Title, Text: safe(s.Title)})
+	}
 	s.print("%s", s.Introduction)
 	s.printStyle(StyleInfo, "Type help for commands. Save file: %s", s.SavePath)
-	s.showView()
+	s.showView(ctx)
 	s.illustrate(ctx, true)
 	s.narrate(ctx, engine.Result{Action: engine.Action{Kind: "observe"}, Message: s.Engine.View().Description, View: s.Engine.View()})
 	reader := bufio.NewReader(s.Input)
@@ -126,6 +179,9 @@ func (s *Session) Run(ctx context.Context) error {
 			return err
 		}
 		Printer{Output: s.Output, Color: s.Color}.Print(StylePrompt, "\n> ")
+		if s.Observer != nil {
+			s.Observer(presentation.Event{Kind: presentation.Ready})
+		}
 		line, err := readCommand(reader)
 		if err == io.EOF {
 			s.printStyle(StyleInfo, "Goodbye.")
@@ -187,7 +243,7 @@ func (s *Session) Run(ctx context.Context) error {
 			} else {
 				s.printStyle(StyleSuccess, "Game loaded.")
 				s.artCache = nil
-				s.showView()
+				s.showView(ctx)
 			}
 			continue
 		}
@@ -224,7 +280,7 @@ func (s *Session) Run(ctx context.Context) error {
 			}
 		}
 		if action.Kind == "move" || action.Kind == "take" || action.Kind == "drop" || action.Kind == "use" || (action.Kind == "observe" && (action.Target == "" || action.Target == result.View.Location)) {
-			s.showView()
+			s.showView(ctx)
 		}
 		if !local {
 			if action.Kind == "move" || (action.Kind == "observe" && (action.Target == "" || action.Target == result.View.Location)) {

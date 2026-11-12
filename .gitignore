@@ -56,3 +56,4 @@ go.work.sum
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite-journal
+*.visuals/

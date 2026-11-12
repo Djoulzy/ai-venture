@@ -4,7 +4,11 @@ La définition du scénario est immuable. L'état courant appartient au moteur G
 
 ```mermaid
 flowchart LR
-    CLI[Terminal FR/EN] --> I[Interpréteur]
+    GUI[Fenêtre Ebitengine FR/EN] --> Q[Commandes soumises explicitement]
+    Q --> CLI[Session séquentielle et terminal facultatif]
+    CLI --> I[Interpréteur]
+    CLI --> EVT[Événements structurés bornés]
+    EVT --> GUI
     I <--> L[Interface inference.Client]
     L <--> O[Adaptateur Ollama]
     L <--> C[Adaptateur llama.cpp]
@@ -45,6 +49,10 @@ flowchart LR
 - `modelruntime.Service` : supervision séparée de l'inférence. `Ensure(ctx, Config)` réutilise ou démarre un service, attend sa disponibilité et renvoie sa propriété via `Owned()`. `Close()` est idempotent et ne touche qu'au processus lancé par le jeu.
 - `persistence` : enveloppe versionnée, identifiant et SHA-256 du scénario, état. Lecture bornée, validation complète et remplacement atomique du fichier.
 - `terminal` : commandes système locales, orchestration de l'interprétation, de la narration et de l'illustration facultative, faits canoniques toujours affichés et repli en cas d'erreur. `Printer` applique une palette ANSI après traduction et filtrage des contrôles. Le mode automatique détecte le terminal et respecte `NO_COLOR` et `TERM=dumb` ; les sorties redirigées restent sans couleur, sauf choix explicite `-color always`.
+- `presentation` : événements typés (titre, vue copiée, fait, narration, scène PNG, dessin ASCII, disponibilité) et lecteur de commandes annulable. Aucun texte affiché n'est analysé pour retrouver l'état ou un chemin d'image.
+- `desktop` : fenêtre Ebitengine indépendante, frontend par défaut. La session tourne dans une goroutine propriétaire du moteur et communique par canaux bornés ; le thread graphique possède uniquement son modèle d'affichage, les images décodées et les textures. Une commande à la fois est soumise via le même lecteur que le terminal. La fermeture annule la session et attend son nettoyage avec un délai borné ; une erreur de démarrage permet un nouveau lancement hors ligne. Les tests du modèle d'affichage et de ces échanges n'ouvrent aucune fenêtre.
+
+La fenêtre active la composition PNG dès qu'un scénario illustré est lié à un catalogue. La session décode uniquement le chemin renvoyé par le compositeur Go, vérifie le format PNG 640 × 384 puis publie l'image. Les chemins contenus dans une narration ne sont jamais ouverts. La fenêtre utilise sa propre palette après filtrage des contrôles, sans interprétation ANSI. `-ui terminal` conserve le comportement initial. Le format des scénarios et des sauvegardes ne change pas avec le frontend.
 
 ## Langue de la partie
 
@@ -67,6 +75,12 @@ Un schéma JSON ne garantit pas la vérité sémantique d'une narration. Les con
 L'option `-art` ajoute un appel distinct au démarrage et sur déplacement/observation globale. Les dessins valides sont mis en cache par lieu et signature du décor public, avec un maximum de 64 lieux et une invalidation au chargement. Une commande `/` peut réafficher un cache à jour mais ne génère jamais de dessin. `art` / `dessin` est une commande de présentation sans tour ni mutation. Le rendu reste décoratif, non sauvegardé et hors du RAG ; une erreur conserve les descriptions canoniques. `-no-narration` désactive seulement la prose ; l'illustration est facultative et indépendante.
 
 ## Recherche documentaire
+
+Le catalogue permanent (`internal/catalogue`, commande `catalogue`) possède un identifiant SQLite distinct du cache narratif. Les lots JSON sont validés avant import, puis fiches, FTS5 et images PNG normalisées sont mis à jour dans une transaction. Le lecteur de fichiers est confiné à la racine d'import ; tailles, dimensions et types sont bornés. Les images restent dans la base après déplacement des sources.
+
+Un scénario peut déclarer `catalogue_documents`. Au démarrage, les fiches de la langue choisie sont matérialisées en documents ordinaires, avec les contraintes de découverte du scénario ; le moteur refuse les références non résolues. L'empreinte porte sur cette définition résolue. La recherche du catalogue est destinée à l'auteur et au futur générateur ; le narrateur conserve exclusivement le corpus de `Engine.Memory()`.
+
+Les calques `visuals` sont déclaratifs et validés par `world`. Le moteur les filtre par lieu, présence des objets et drapeaux avant de produire `View.Visuals`, exclu de la sérialisation JSON d'inférence. `internal/visuals` charge uniquement ces images dans un snapshot SQLite, applique l'ordre stable de profondeur, le redimensionnement et la transparence alpha, puis exporte atomiquement un PNG 640 × 384. Les sorties sont décoratives et ne sont jamais relues comme état ; leur échec ne modifie aucune règle. `-visuals` fonctionne sans LLM et avec les commandes locales, indépendamment de l'illustrateur ASCII.
 
 `world.Document` définit un texte et ses conditions de découverte. `Engine` apprend les documents accessibles au démarrage et après une action réussie. Le journal conserve uniquement action, tour et lieu : les phrases historiques sont reconstruites depuis le scénario, jamais depuis une réponse LLM. `Engine.Memory()` renvoie des copies des connaissances autorisées dans la langue choisie, sans exposer les conditions ni les drapeaux privés.
 

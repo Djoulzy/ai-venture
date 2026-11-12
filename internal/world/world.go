@@ -21,18 +21,20 @@ const Inventory = "@inventory"
 const MaxBytes = 2 << 20
 
 type Definition struct {
-	Version      int                 `json:"version"`
-	ID           string              `json:"id"`
-	Title        string              `json:"title"`
-	Introduction string              `json:"introduction"`
-	Start        string              `json:"start"`
-	Locations    map[string]Location `json:"locations"`
-	Items        map[string]Item     `json:"items"`
-	Flags        map[string]bool     `json:"flags"`
-	Rules        []UseRule           `json:"rules"`
-	Goal         []Condition         `json:"goal"`
-	Provenance   *Provenance         `json:"provenance,omitempty"`
-	Documents    []Document          `json:"documents,omitempty"`
+	Version            int                 `json:"version"`
+	ID                 string              `json:"id"`
+	Title              string              `json:"title"`
+	Introduction       string              `json:"introduction"`
+	Start              string              `json:"start"`
+	Locations          map[string]Location `json:"locations"`
+	Items              map[string]Item     `json:"items"`
+	Flags              map[string]bool     `json:"flags"`
+	Rules              []UseRule           `json:"rules"`
+	Goal               []Condition         `json:"goal"`
+	Provenance         *Provenance         `json:"provenance,omitempty"`
+	Documents          []Document          `json:"documents,omitempty"`
+	CatalogueDocuments []DocumentRef       `json:"catalogue_documents,omitempty"`
+	Visuals            []VisualLayer       `json:"visuals,omitempty"`
 }
 
 const MaxDocuments = 512
@@ -235,7 +237,7 @@ func Validate(w Definition) error {
 	if len(w.Goal) == 0 {
 		return locale.Errorf("missing objective")
 	}
-	if len(w.Documents) > MaxDocuments {
+	if len(w.Documents)+len(w.CatalogueDocuments) > MaxDocuments {
 		return locale.Errorf("too many lore documents")
 	}
 	documentIDs := map[string]bool{}
@@ -256,6 +258,9 @@ func Validate(w Definition) error {
 		if err := checkConditions(doc.Conditions); err != nil {
 			return err
 		}
+	}
+	if err := validateAuthoring(w, documentIDs, checkConditions); err != nil {
+		return err
 	}
 	if err := checkConditions(w.Goal); err != nil {
 		return err

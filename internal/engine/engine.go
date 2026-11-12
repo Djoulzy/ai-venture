@@ -79,13 +79,23 @@ type VisibleExit struct {
 }
 
 type View struct {
-	Location    string        `json:"location"`
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Exits       []VisibleExit `json:"exits"`
-	Items       []VisibleItem `json:"items"`
-	Inventory   []VisibleItem `json:"inventory"`
-	Completed   bool          `json:"completed"`
+	Location    string          `json:"location"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Exits       []VisibleExit   `json:"exits"`
+	Items       []VisibleItem   `json:"items"`
+	Inventory   []VisibleItem   `json:"inventory"`
+	Completed   bool            `json:"completed"`
+	Visuals     []VisibleVisual `json:"-"` // presentation only; never sent to inference
+}
+
+type VisibleVisual struct {
+	Asset  string `json:"asset"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	Z      int    `json:"z"`
 }
 
 type Result struct {
@@ -112,6 +122,9 @@ func NewWithLanguage(w world.Definition, language locale.Language) (*Engine, err
 	}
 	if err := world.Validate(w); err != nil {
 		return nil, err
+	}
+	if len(w.CatalogueDocuments) > 0 {
+		return nil, locale.Errorf("catalogue documents must be resolved before starting the engine")
 	}
 	w = world.Clone(w)
 	s := State{Location: w.Start, ItemLocations: map[string]string{}, Flags: map[string]bool{}}
@@ -313,5 +326,14 @@ func (e *Engine) View() View {
 	sort.Slice(v.Items, func(i, j int) bool { return v.Items[i].ID < v.Items[j].ID })
 	sort.Slice(v.Inventory, func(i, j int) bool { return v.Inventory[i].ID < v.Inventory[j].ID })
 	sort.Slice(v.Exits, func(i, j int) bool { return v.Exits[i].Direction < v.Exits[j].Direction })
+	for _, layer := range e.definition.Visuals {
+		if layer.Location != e.state.Location || !world.Matches(e.state.Flags, layer.Conditions) {
+			continue
+		}
+		if layer.Item != "" && e.state.ItemLocations[layer.Item] != e.state.Location {
+			continue
+		}
+		v.Visuals = append(v.Visuals, VisibleVisual{layer.Asset, layer.X, layer.Y, layer.Width, layer.Height, layer.Z})
+	}
 	return v
 }

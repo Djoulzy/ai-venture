@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "id": "providence_the_threshold_en",
+  "title": "Providence — The Threshold",
+  "introduction": "Providence, 1921. A scrawled address has brought you to an abandoned house. Your first objective is to open its front door. An old key rests on the porch; examine it before trying the lock. This opening scene takes place entirely outside the house.",
+  "start": "colonial_house",
+  "locations": {
+    "colonial_house": {
+      "name": "Outside the colonial house",
+      "description": "At the end of a mist-shrouded lane in Providence stands an ancient colonial house, its decaying wooden walls strangled by blackened ivy. A sickly glow occasionally flickers behind its darkened windows, though the house has stood abandoned for decades. Gnarled trees lean towards its walls, as if concealing some unspeakable secret. An unsettling feeling takes hold of you: something within has been awaiting your arrival.",
+      "exits": {}
+    }
+  },
+  "items": {
+    "old_key": {
+      "name": "the old key",
+      "description": "An iron key with a twisted handle. Its bit appears to match the lock on the front door.",
+      "portable": true,
+      "location": "colonial_house"
+    },
+    "door": {
+      "name": "the front door",
+      "description": "A heavy dark wooden door with an old iron lock. The old key looks suitable for working the lock.",
+      "portable": false,
+      "location": "colonial_house"
+    }
+  },
+  "flags": {"door_open": false},
+  "rules": [
+    {
+      "id": "unlock_door",
+      "tool": "old_key",
+      "target": "door",
+      "location": "colonial_house",
+      "conditions": [{"flag": "door_open", "value": false}],
+      "effects": {"door_open": true},
+      "message": "The key turns with a click. The door opens a little and cold air brushes your face. You stand on the threshold, facing the darkness within.",
+      "blocked_message": "The door is already open."
+    }
+  ],
+  "goal": [{"flag": "door_open", "value": true}],
+  "catalogue_documents": [
+    {"id": "house_history", "entry": "colonial_house", "location": "colonial_house"}
+  ],
+  "visuals": [
+    {"asset": "house_background", "location": "colonial_house", "x": 0, "y": 0, "width": 100, "height": 100, "z": 0}
+  ]
+}

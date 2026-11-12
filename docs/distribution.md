@@ -1,8 +1,10 @@
 # AI Venture — The Last Lighthouse
 
-Jeu d'aventure textuelle en anglais ou français. Les scénarios et traductions sont embarqués dans l'exécutable. Go n'est pas nécessaire pour jouer.
+Jeu d'aventure textuelle illustrée en anglais ou français, dans une fenêtre graphique indépendante. Les traductions et le scénario de base du phare sont embarqués dans l'exécutable ; les fichiers Providence et son catalogue source sont inclus dans le paquet. Go n'est pas nécessaire pour jouer.
 
-Cette archive cible le système et l'architecture indiqués dans son nom et dans `BUILD.json`. Extraire tout le dossier dans un emplacement accessible en écriture, puis ouvrir un terminal dans ce dossier. Les sauvegardes et le cache SQLite sont créés dans le répertoire courant.
+Cette archive cible le système et l'architecture indiqués dans son nom et dans `BUILD.json`. Sur macOS, double-cliquer sur **AI Venture.app** pour jouer immédiatement à **Providence — The Threshold**, en anglais et hors ligne. Ses données sont conservées dans `~/Library/Application Support/ai-venture`, hors de l'application, avec une base et des sauvegardes portant le nom `providence`.
+
+Pour les autres systèmes ou les options LLM, extraire tout le dossier dans un emplacement accessible en écriture, puis utiliser les commandes ci-dessous. La fenêtre s'ouvre automatiquement ; ajouter `-ui terminal` pour jouer dans un terminal. Les sauvegardes et le cache SQLite sont créés dans le répertoire courant, ou dans `-data-dir dossier`. Voir [docs/window.md](docs/window.md) pour les commandes de la fenêtre. Sous Linux, un bureau X11 ou compatible XWayland et un pilote graphique sont nécessaires à la fenêtre.
 
 ## Jouer sans modèle
 
@@ -35,8 +37,21 @@ Pour Ollama, le modèle choisi doit être déjà installé. Un serveur existant 
 
 ## Commandes utiles
 
+Pour essayer les images composées par Go, sans modèle :
+
+```sh
+./catalogue import -db catalogue.sqlite -source data/catalogue/providence
+./aventure -offline -lang fr -scenario scenarios/providence-fr.json -catalogue catalogue.sqlite -save savegame-providence-fr.json -visuals
+```
+
+Les PNG s'affichent dans la fenêtre et restent exportés dans `<sauvegarde>.visuals`. Avec `-ui terminal`, leurs chemins sont affichés. Voir `docs/catalogue.md`. L'exécutable `catalogue` est fourni ; utiliser `catalogue.exe` sous Windows.
+
 - `-lang en` ou `-lang fr` : langue de la partie.
-- `-color auto|always|never` : couleurs ANSI, automatiques par défaut.
+- `-ui window|terminal` : fenêtre indépendante par défaut, terminal en option.
+- `-data-dir dossier` : dossier des données générées (sauf chemins explicitement fournis).
+- `-color auto|always|never` : couleurs ANSI du mode terminal, automatiques par défaut.
+- `-catalogue catalogue.sqlite -visuals` : fiches importées et scènes PNG composées par Go.
+- `-visual-dir dossier` : emplacement des PNG exportés.
 - `-art` : illustrations LLM des lieux en ASCII/ANSI, au maximum 80 colonnes et 24 lignes. `art` / `dessin` réaffiche le dessin courant ; un petit modèle peut produire des dessins très sommaires.
 - `-save ma-partie.json` et `-load` : emplacement de sauvegarde et reprise au démarrage.
 - `-rag=false` : désactiver la mémoire documentaire SQLite de la narration.
@@ -56,3 +71,9 @@ shasum -a 256 -c ai-venture-VERSION-SYSTEME-ARCHITECTURE.tar.gz.sha256
 ```
 
 Sous Linux, `sha256sum -c` peut remplacer `shasum -a 256 -c`.
+
+L'application macOS contient aussi ses licences et son manifeste dans `Contents/Resources`. Elle n'est pas encore signée Developer ID ou notarisée. Pour jouer en français avec la démonstration intégrée :
+
+```sh
+"AI Venture.app/Contents/MacOS/aventure" -offline -lang fr
+```
