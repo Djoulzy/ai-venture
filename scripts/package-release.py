@@ -42,6 +42,7 @@ def configuration():
             "Le runtime llama-server se compile sur sa plateforme cible (macOS ou Linux). "
             "Utilisez WITH_LLAMA=0 pour une compilation Go vers une autre plateforme."
         )
+    game_inputs(ROOT, os.environ.get("GAME", "game.json"))
     return version, target_os, target_arch, with_llama == "1"
 
 
@@ -118,29 +119,114 @@ def native_runtime(package, target_os, target_arch):
     return manifest
 
 
-def playable_content(source, destination):
-    # Explicit scenario/manifests, plus only images declared by that manifest.
-    # Do not copy the workspace, unrelated views, databases or save files.
-    for language in ("en", "fr"):
-        relative = Path(f"scenarios/providence-{language}.json")
-        copy(source / relative, destination / relative)
-    catalogue = Path("data/catalogue/providence")
-    manifest = catalogue / "lieux/lieux.json"
-    copy(source / manifest, destination / manifest)
-    copy(source / catalogue / "README.md", destination / catalogue / "README.md")
-    root = (source / catalogue).resolve()
-    for asset in json.loads((source / manifest).read_text())["assets"]:
-        path = (source / manifest.parent / asset["path"]).resolve()
+def read_json(path, limit):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"Clé JSON dupliquée : {key}")
+            result[key] = value
+        return result
+    with path.open("rb") as stream:
+        data = stream.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(f"Fichier JSON trop volumineux : {path.name}")
+    return json.loads(data, object_pairs_hook=unique)
+
+
+def game_inputs(source, game_file="game.json"):
+    config_path = (source / game_file).resolve(strict=True)
+    root = config_path.parent
+    config = read_json(config_path, 65536)
+    if (not isinstance(config, dict) or set(config) - {"version", "id", "scenarios", "catalogue_source", "documents"}
+            or type(config.get("version")) is not int or config["version"] != 1
+            or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", str(config.get("id", "")))
+            or not isinstance(config.get("scenarios"), dict) or not 1 <= len(config["scenarios"]) <= 2
+            or set(config["scenarios"]) - {"fr", "en"}):
+        raise ValueError("Configuration du jeu invalide.")
+    files = {}
+
+    def checked(relative):
+        if (not isinstance(relative, str) or not relative or relative == "."
+                or Path(relative).is_absolute() or ".." in Path(relative).parts
+                or "\\" in relative or ":" in relative):
+            raise ValueError("Chemin de contenu invalide.")
+        path = (root / relative).resolve(strict=True)
         if not path.is_relative_to(root):
-            raise ValueError("Une image de Providence sort du dossier autorisé.")
-        copy(path, destination / catalogue / path.relative_to(root))
+            raise ValueError("Un fichier de contenu sort du projet sélectionné.")
+        return path
+
+    def add(path, relative, limit, extensions):
+        relative = Path(relative)
+        if (not path.is_file() or path.stat().st_size > limit or path.suffix.lower() not in extensions
+                or relative.parts[0] in {"runtime", "models", "licenses"}
+                or str(relative) in {"game.json", "BUILD.json"}):
+            raise ValueError(f"Fichier de contenu non autorisé : {relative}")
+        if relative in files and files[relative] != path:
+            raise ValueError(f"Collision de contenu : {relative}")
+        files[relative] = path
+
+    for relative in config["scenarios"].values():
+        path = checked(relative)
+        scenario = read_json(path, 2 << 20)
+        if not isinstance(scenario, dict) or scenario.get("version") != 1 or not scenario.get("locations"):
+            raise ValueError("Le scénario sélectionné n'est pas une définition de monde.")
+        add(path, relative, 2 << 20, {".json"})
+    documents = config.get("documents", [])
+    if not isinstance(documents, list) or len(documents) > 32:
+        raise ValueError("Liste de documents invalide.")
+    for relative in documents:
+        add(checked(relative), relative, 16 << 20, {".md", ".txt", ".pdf"})
+    if config.get("catalogue_source", "") != "":
+        source_name = config["catalogue_source"]
+        checked(source_name)
+        base = root / source_name
+        if base.is_file():
+            manifests, catalogue_root = [base], base.parent
+        else:
+            manifests, catalogue_root = [], base
+            for folder, dirs, names in os.walk(base, followlinks=False):
+                depth = len(Path(folder).relative_to(base).parts)
+                dirs[:] = [name for name in dirs if not name.startswith(".") and depth < 7]
+                manifests.extend(Path(folder) / name for name in sorted(names) if name.lower().endswith(".json"))
+                if len(manifests) > 128:
+                    raise ValueError("Trop de manifestes de catalogue.")
+        if not manifests:
+            raise ValueError("Aucun manifeste de catalogue.")
+        target_root = Path(source_name).parent if base.is_file() else Path(source_name)
+        for manifest in sorted(manifests):
+            resolved = manifest.resolve(strict=True)
+            if not resolved.is_relative_to(catalogue_root.resolve()):
+                raise ValueError("Un manifeste sort de la racine du catalogue.")
+            data = read_json(resolved, 1 << 20)
+            if not isinstance(data, dict) or data.get("version") != 1:
+                raise ValueError("Manifeste de catalogue invalide.")
+            add(resolved, target_root / manifest.relative_to(catalogue_root), 1 << 20, {".json"})
+            for asset in data.get("assets", []):
+                image_path = asset["path"]
+                if not isinstance(image_path, str) or Path(image_path).is_absolute():
+                    raise ValueError("Chemin d'image invalide.")
+                lexical = Path(os.path.abspath(manifest.parent / image_path))
+                path = lexical.resolve(strict=True)
+                if not path.is_relative_to(catalogue_root.resolve()) or not lexical.is_relative_to(catalogue_root):
+                    raise ValueError("Une image sort de la racine du catalogue.")
+                add(path, target_root / lexical.relative_to(catalogue_root), 16 << 20, {".png", ".jpg", ".jpeg", ".gif"})
+    return config_path, files
+
+
+def playable_content(source, destination, game_file="game.json"):
+    # Only content selected by the external manifest and its declared images.
+    config_path, files = game_inputs(source, game_file)
+    copy(config_path, destination / "game.json")
+    for relative, path in sorted(files.items()):
+        copy(path, destination / relative)
 
 
 def mac_application(destination, source, version):
     contents = destination / "Contents"
     copy(source / "aventure", contents / "MacOS/aventure", executable=True)
     resources = contents / "Resources"
-    for name in ("README.md", "docs/catalogue.md", "docs/window.md"):
+    for name in ("README.md", "docs/catalogue.md", "docs/window.md", "docs/generation.md", "docs/game-config.md"):
         copy(source / name, resources / name)
     manifest = json.loads((source / "BUILD.json").read_text())
     manifest["executable"] = "../MacOS/aventure"
@@ -178,7 +264,7 @@ def local_application(config):
         staging = Path(folder)
         # An explicit staging tree contains no private databases, saves or models.
         copy(ROOT / "bin/aventure", staging / "source/aventure", executable=True)
-        playable_content(ROOT, staging / "source")
+        playable_content(ROOT, staging / "source", os.environ.get("GAME", "game.json"))
         if with_llama:
             native = native_runtime(staging / "source", target_os, config[2])
         else:
@@ -187,6 +273,8 @@ def local_application(config):
         copy(ROOT / "docs/distribution.md", source / "README.md")
         copy(ROOT / "docs/catalogue.md", source / "docs/catalogue.md")
         copy(ROOT / "docs/window.md", source / "docs/window.md")
+        copy(ROOT / "docs/generation.md", source / "docs/generation.md")
+        copy(ROOT / "docs/game-config.md", source / "docs/game-config.md")
         for path in license_files(ROOT):
             copy(path, source / path.name)
         modules, notices = go_licenses(source)
@@ -244,7 +332,9 @@ def package_release(config):
         copy(ROOT / "docs/distribution.md", package / "README.md")
         copy(ROOT / "docs/catalogue.md", package / "docs/catalogue.md")
         copy(ROOT / "docs/window.md", package / "docs/window.md")
-        playable_content(ROOT, package)
+        copy(ROOT / "docs/generation.md", package / "docs/generation.md")
+        copy(ROOT / "docs/game-config.md", package / "docs/game-config.md")
+        playable_content(ROOT, package, os.environ.get("GAME", "game.json"))
         for source in license_files(ROOT):
             copy(source, package / source.name)
         models = package / "models"

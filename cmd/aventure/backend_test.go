@@ -19,7 +19,7 @@ import (
 	"ai-venture/internal/engine"
 	"ai-venture/internal/language"
 	"ai-venture/internal/terminal"
-	"ai-venture/scenarios"
+	"ai-venture/internal/testfixtures"
 )
 
 func TestMain(m *testing.M) {
@@ -154,7 +154,7 @@ func TestBackendLaunchThroughGameplayAndShutdown(t *testing.T) {
 			if !service.Owned() {
 				t.Fatal("service non lancé")
 			}
-			world, err := (scenarios.Demo{}).Load(context.Background())
+			world, err := (testfixtures.Scenario{}).Load(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}

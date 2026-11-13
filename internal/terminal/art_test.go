@@ -12,7 +12,7 @@ import (
 	"ai-venture/internal/language"
 	"ai-venture/internal/locale"
 	"ai-venture/internal/terminal"
-	"ai-venture/scenarios"
+	"ai-venture/internal/testfixtures"
 )
 
 type fakeIllustrator struct {
@@ -36,7 +36,7 @@ func (f *fakeIllustrator) Illustrate(ctx context.Context, _ engine.View) (illust
 func TestArtCacheLocalCommandsAndRestore(t *testing.T) {
 	for _, lang := range []locale.Language{locale.English, locale.French} {
 		t.Run(string(lang), func(t *testing.T) {
-			w, err := (scenarios.Demo{Language: lang}).Load(context.Background())
+			w, err := (testfixtures.Scenario{Language: lang}).Load(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}

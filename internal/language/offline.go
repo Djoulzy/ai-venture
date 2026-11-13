@@ -93,6 +93,12 @@ func (o Offline) Interpret(ctx context.Context, command string, view engine.View
 		a.Kind = "take"
 	case "drop":
 		a.Kind = "drop"
+	case "read", "study":
+		if rest == "" {
+			return a, locale.Errorf("specify an item to read: read <item name or ID>")
+		}
+		tool, err := o.resolve(rest, view)
+		return engine.Action{Kind: "use", Tool: tool}, err
 	case "use":
 		tool, target, found := strings.Cut(rest, " on ")
 		toolID, err := o.resolve(tool, view)
@@ -148,6 +154,8 @@ func frenchCommand(command string) string {
 		verb = "drop"
 	case "utiliser", "utilise":
 		verb, rest = "use", strings.Replace(rest, " sur ", " on ", 1)
+	case "lire", "lis", "lisez", "etudier", "etudie", "etudiez":
+		verb = "read"
 	case "ouvrir", "ouvre", "allumer", "allume":
 		verb, rest = "open", strings.Replace(rest, " avec ", " with ", 1)
 	}

@@ -15,8 +15,8 @@ import (
 	"ai-venture/internal/persistence"
 	"ai-venture/internal/retrieval"
 	ragstore "ai-venture/internal/retrieval/sqlite"
+	"ai-venture/internal/testfixtures"
 	"ai-venture/internal/world"
-	"ai-venture/scenarios"
 )
 
 type recordingSearch struct {
@@ -31,7 +31,7 @@ func (s *recordingSearch) Search(_ context.Context, q retrieval.Query) ([]retrie
 }
 
 func TestRAGOnlyUsesEngineApprovedText(t *testing.T) {
-	w, err := (scenarios.Demo{}).Load(context.Background())
+	w, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestRAGOnlyUsesEngineApprovedText(t *testing.T) {
 }
 
 func TestRAGSelectsFrenchAndRecoversFromSearchFailure(t *testing.T) {
-	w, err := (scenarios.Demo{Language: locale.French}).Load(context.Background())
+	w, err := (testfixtures.Scenario{Language: locale.French}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestRAGSelectsFrenchAndRecoversFromSearchFailure(t *testing.T) {
 }
 
 func TestRAGSaveReloadDropsFutureKnowledgeAndJournal(t *testing.T) {
-	w, err := (scenarios.Demo{}).Load(context.Background())
+	w, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -88,7 +88,7 @@ func Load(ctx context.Context, source string) (Batch, error) {
 		if err := strictjson.Decode(data, &manifest); err != nil {
 			return Batch{}, err
 		}
-		if manifest.Version != Version || len(manifest.Entries)+len(manifest.Assets) == 0 {
+		if manifest.Version != Version {
 			return Batch{}, locale.Errorf("invalid catalogue manifest: %s", name)
 		}
 		if len(batch.Entries)+len(manifest.Entries) > MaxEntries || len(batch.Assets)+len(manifest.Assets) > MaxAssets {
@@ -138,6 +138,9 @@ func Load(ctx context.Context, source string) (Batch, error) {
 			hash := sha256.Sum256(blob)
 			batch.Assets = append(batch.Assets, Asset{ID: source.ID, Kind: source.Kind, SHA256: hex.EncodeToString(hash[:]), Width: config.Width, Height: config.Height, License: source.License, PNG: blob})
 		}
+	}
+	if len(batch.Entries)+len(batch.Assets) == 0 {
+		return Batch{}, locale.Errorf("catalogue contains no entries or images")
 	}
 	return batch, ctx.Err()
 }

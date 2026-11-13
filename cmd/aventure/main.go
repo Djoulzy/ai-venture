@@ -14,6 +14,7 @@ import (
 	"ai-venture/internal/catalogue"
 	"ai-venture/internal/desktop"
 	"ai-venture/internal/engine"
+	"ai-venture/internal/gameconfig"
 	"ai-venture/internal/illustration"
 	"ai-venture/internal/language"
 	"ai-venture/internal/locale"
@@ -23,7 +24,6 @@ import (
 	"ai-venture/internal/terminal"
 	"ai-venture/internal/visuals"
 	"ai-venture/internal/world"
-	"ai-venture/scenarios"
 )
 
 func main() {
@@ -37,6 +37,10 @@ func main() {
 
 func run() (runErr error) {
 	langFlag := flag.String("lang", "en", "Game language / langue du jeu: en or fr")
+	generate := flag.Bool("generate", false, "Generate a validated scenario from -pitch and -catalogue, then exit")
+	pitch := flag.String("pitch", "", "Adventure pitch for -generate (maximum 2000 characters / 4096 bytes)")
+	scenarioOut := flag.String("scenario-out", "", "New JSON scenario destination; existing files are never replaced")
+	seed := flag.Int64("seed", 0, "Generation variation identifier (0: random; not a guarantee of deterministic LLM output)")
 	uiFlag := flag.String("ui", "window", "Interface: window or terminal (default: independent graphical window)")
 	dataDir := flag.String("data-dir", "", "Writable game data directory (default: current folder, app bundle: user configuration folder)")
 	colorFlag := flag.String("color", "auto", "ANSI colors: auto, always or never (auto respects NO_COLOR and TERM=dumb)")
@@ -51,8 +55,9 @@ func run() (runErr error) {
 	llamaContext := flag.Int("llama-context", 4096, "Context size for the llama-server started by the game")
 	autoStart := flag.Bool("auto-start", true, "Start the local service if it is absent")
 	startupTimeout := flag.Duration("startup-timeout", 2*time.Minute, "Maximum time to wait for the service to become ready")
-	scenarioPath := flag.String("scenario", "", "Scenario JSON (default: embedded lighthouse adventure)")
-	savePath := flag.String("save", "", "Save file path (default: savegame-en.json or savegame-fr.json)")
+	gamePath := flag.String("game", "", "External game configuration (default: game.json from app resources, working directory or executable directory)")
+	scenarioPath := flag.String("scenario", "", "External scenario JSON; bypasses automatic game.json selection")
+	savePath := flag.String("save", "", "Save path (default: savegame-<game or scenario ID>-<language>.json)")
 	load := flag.Bool("load", false, "Load the save file at startup")
 	noNarration := flag.Bool("no-narration", false, "Disable prose narration (location illustrations use -art)")
 	art := flag.Bool("art", false, "Generate LLM location illustrations, at most 80 columns by 24 lines")
@@ -86,10 +91,51 @@ func run() (runErr error) {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if *generate {
+		if *gamePath != "" {
+			return locale.Errorf("use -catalogue, not -game, for autonomous generation")
+		}
+		if *offline || *load || *scenarioPath != "" || *cataloguePath == "" || *scenarioOut == "" || *pitch == "" {
+			return locale.Errorf("generation requires -pitch, -catalogue and -scenario-out, without -offline, -load or -scenario")
+		}
+		if _, err := os.Lstat(*scenarioOut); err == nil {
+			return locale.Errorf("scenario output already exists: %s", *scenarioOut)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		explicitContext := false
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "llama-context" {
+				explicitContext = true
+			}
+		})
+		if !explicitContext {
+			*llamaContext = 8192
+		}
+		*model, err = resolveModel(*provider, *model, *gguf)
+		if err != nil {
+			return err
+		}
+		return generateScenario(ctx, selected, *pitch, *scenarioOut, *cataloguePath, *seed, backendConfig{
+			provider: *provider, model: *model, ollamaURL: *host, ollamaBinary: *ollamaBinary,
+			llamaURL: *llamaURL, llamaBinary: *llamaBinary, gguf: *gguf, llamaContext: *llamaContext,
+			autoStart: *autoStart, timeout: *timeout, startupTimeout: *startupTimeout,
+		}, terminal.NewPrinter(os.Stdout, colorMode))
+	}
+	if *pitch != "" || *scenarioOut != "" || *seed != 0 {
+		return locale.Errorf("pitch, scenario-out and seed require -generate")
+	}
 	executable, _ := os.Executable()
 	resources := bundleResources(executable)
-	if resources != "" && *uiFlag == "window" && *scenarioPath == "" && *cataloguePath == "" && !saveProvided {
-		*savePath = "savegame-providence-" + string(selected) + ".json"
+	if *gamePath != "" && *scenarioPath != "" {
+		return locale.Errorf("choose either -game or -scenario")
+	}
+	if *gamePath == "" && *scenarioPath == "" {
+		directory, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		*gamePath = defaultGameConfig(executable, directory)
 	}
 	if resources != "" && *dataDir == "" {
 		configDir, err := os.UserConfigDir()
@@ -97,9 +143,6 @@ func run() (runErr error) {
 			return err
 		}
 		*dataDir = filepath.Join(configDir, "ai-venture")
-	}
-	if *dataDir != "" && !saveProvided {
-		*savePath = filepath.Join(*dataDir, *savePath)
 	}
 	play := func(ctx context.Context, input io.Reader, writer io.Writer, observe presentation.Observer, forceOffline bool) (runErr error) {
 		output := terminal.NewPrinter(writer, colorMode)
@@ -115,25 +158,45 @@ func run() (runErr error) {
 				return err
 			}
 		}
-		if resources != "" && *uiFlag == "window" && *scenarioPath == "" && *cataloguePath == "" {
-			var err error
-			*scenarioPath, *cataloguePath, err = prepareBundle(ctx, resources, *dataDir, selected)
+		path, database, saveID := *scenarioPath, *cataloguePath, ""
+		if *gamePath != "" {
+			config, err := gameconfig.Load(ctx, *gamePath)
 			if err != nil {
 				return err
 			}
+			path, err = config.Scenario(selected)
+			if err != nil {
+				return err
+			}
+			saveID = config.ID
+			if database == "" {
+				directory := *dataDir
+				if directory == "" {
+					directory = "."
+				}
+				database, err = config.PrepareCatalogue(ctx, directory)
+				if err != nil {
+					return err
+				}
+			}
 		}
-		var source world.Source = scenarios.Demo{Language: selected}
-		if *scenarioPath != "" {
-			source = world.FileSource{Path: *scenarioPath}
+		if path == "" {
+			return locale.Errorf("no game selected: provide -game or -scenario, or a game.json configuration")
 		}
-		w, err := source.Load(ctx)
+		w, err := (world.FileSource{Path: path}).Load(ctx)
 		if err != nil {
 			return locale.Errorf("scenario: %w", err)
 		}
+		if !saveProvided {
+			if saveID == "" {
+				saveID = w.ID
+			}
+			*savePath = filepath.Join(*dataDir, "savegame-"+saveID+"-"+string(selected)+".json")
+		}
 		var content *catalogue.Store
-		if *cataloguePath != "" {
+		if database != "" {
 			openCtx, openCancel := context.WithTimeout(ctx, 5*time.Second)
-			content, err = catalogue.Open(openCtx, *cataloguePath, false)
+			content, err = catalogue.Open(openCtx, database, false)
 			if err == nil {
 				w, err = content.Bind(openCtx, w, selected)
 			}

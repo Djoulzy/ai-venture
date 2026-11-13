@@ -14,7 +14,7 @@ import (
 	"ai-venture/internal/language"
 	"ai-venture/internal/locale"
 	"ai-venture/internal/terminal"
-	"ai-venture/scenarios"
+	"ai-venture/internal/testfixtures"
 )
 
 var sgr = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -64,7 +64,7 @@ func (colorTestNarrator) Narrate(context.Context, engine.Result) (string, error)
 func TestColoredSessionsPreserveTextStateAndSanitization(t *testing.T) {
 	for _, lang := range []locale.Language{locale.English, locale.French} {
 		t.Run(string(lang), func(t *testing.T) {
-			w, err := (scenarios.Demo{Language: lang}).Load(context.Background())
+			w, err := (testfixtures.Scenario{Language: lang}).Load(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}

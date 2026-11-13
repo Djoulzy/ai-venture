@@ -18,8 +18,8 @@ import (
 	"ai-venture/internal/engine"
 	"ai-venture/internal/locale"
 	ragstore "ai-venture/internal/retrieval/sqlite"
+	"ai-venture/internal/testfixtures"
 	"ai-venture/internal/world"
-	"ai-venture/scenarios"
 )
 
 func source(t *testing.T) string {
@@ -52,6 +52,24 @@ func writeManifest(t *testing.T, dir string, m catalogue.Manifest) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "catalogue.json"), data, 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEmptyCategoryCanCoexistWithContent(t *testing.T) {
+	dir := source(t)
+	if err := os.WriteFile(filepath.Join(dir, "empty.json"), []byte(`{"version":1,"entries":[],"assets":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := catalogue.Load(context.Background(), dir)
+	if err != nil || len(batch.Entries) != 2 || len(batch.Assets) != 1 {
+		t.Fatalf("empty category blocked content: %v", err)
+	}
+	empty := t.TempDir()
+	if err := os.WriteFile(filepath.Join(empty, "empty.json"), []byte(`{"version":1,"entries":[],"assets":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalogue.Load(context.Background(), empty); err == nil {
+		t.Fatal("entirely empty import accepted")
 	}
 }
 
@@ -245,7 +263,7 @@ func TestBindingsPreserveDiscoveryAndRejectUnresolvedEngine(t *testing.T) {
 	if _, err := s.Import(ctx, batch, false); err != nil {
 		t.Fatal(err)
 	}
-	w, err := (scenarios.Demo{}).Load(ctx)
+	w, err := (testfixtures.Scenario{}).Load(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

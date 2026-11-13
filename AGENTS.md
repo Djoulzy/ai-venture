@@ -7,7 +7,9 @@
 - Les illustrations LLM sont décoratives et limitées à 80 colonnes sur 24 lignes : JSON strict, texte ASCII imprimable et palette fermée, jamais d'ANSI fourni par le modèle. Valider le dessin entier avant affichage, borner son cache et ne pas l'ajouter aux sauvegardes ou au RAG. Les commandes préfixées `/` n'appellent jamais l'illustrateur.
 - Tester les parcours anglais et français ; les variantes du scénario de démonstration possèdent leurs propres identifiants et sauvegardes. Un scénario externe conserve les textes fournis dans son fichier.
 - `internal/world` définit et valide les scénarios ; `internal/engine` est seul responsable des règles et de l'état courant.
+- Aucun scénario jouable, nom de catalogue ou identifiant d'aventure ne doit être codé en dur dans le lancement ou les scripts de distribution. `internal/gameconfig` lit une configuration externe (`-game`, ou `game.json`) ; `-scenario` charge directement un fichier. Le packaging suit `GAME` et ses références. Les fixtures sont réservées aux tests, absentes des dépendances et du contenu distribué du binaire.
 - Le LLM propose une seule action typée. Ne jamais exécuter du code, un chemin de fichier ou un changement d'état provenant du modèle.
+- En mode LLM, transmettre toute saisie de jeu sans `/` telle quelle à l'inférence, sans préfiltrage par la grammaire hors ligne. Réserver celle-ci aux commandes explicitement locales, aux boutons et au mode hors ligne. Les commandes de session (aide, sauvegarde, chargement, sortie) restent locales. La liberté de formulation ne dispense jamais de la validation des règles.
 - Toute nouvelle action doit être validée côté moteur, y compris lorsqu'elle provient d'un autre interpréteur que le LLM.
 - Appliquer les effets sur une copie, vérifier les invariants, puis remplacer l'état. Un échec ne modifie rien.
 - Ne transmettre à l'inférence que la vue visible et des résultats validés, jamais les règles secrètes ni une référence mutable au moteur.
@@ -17,7 +19,8 @@
 - Démarrer les binaires avec `os/exec` et des arguments séparés, sans shell. Borner le démarrage, les journaux et l'arrêt ; attendre les processus lancés et nettoyer leurs descendants sous macOS/Linux.
 - Tester les adaptateurs et le cycle de vie avec des serveurs et sous-processus de test ; ne pas télécharger de modèles ni installer de binaires durant les tests.
 - Décoder strictement les entrées JSON. Maintenir le schéma des actions et sa validation Go ensemble.
-- Les scénarios générés devront passer par la même validation que les fichiers fixes. Ne pas contourner les préconditions pour faciliter une génération.
+- Les scénarios générés passent par la même validation que les fichiers fixes. Ne pas contourner les préconditions pour faciliter une génération.
+- `internal/generation` consulte uniquement le catalogue permanent avant la partie, avec langue, types et budgets bornés. Le modèle propose un plan JSON utilisant les identifiants sélectionnés ; Go construit les règles et rejoue un parcours gagnant avec `engine.Apply` avant publication. Ne jamais transmettre cette solution au narrateur. Publier atomiquement vers un chemin choisi par l'utilisateur, sans écrasement, et conserver le scénario avec sa sauvegarde.
 - Les sauvegardes sont versionnées, associées à l'empreinte du scénario et écrites atomiquement. Valider avant de remplacer l'état courant.
 - Ajouter des tests de comportement pour les règles, les refus sans mutation, les entrées LLM invalides et la persistance. Les tests ordinaires ne doivent pas nécessiter Ollama ou Internet.
 - Exécuter `gofmt`, `go test ./...`, `go test -race ./...` et `go vet ./...` avant livraison d'une modification fonctionnelle.

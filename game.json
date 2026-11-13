@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "providence_tides",
+  "scenarios": {
+    "en": "scenarios/providence-tides-en.json",
+    "fr": "scenarios/providence-tides-fr.json"
+  },
+  "catalogue_source": "data/catalogue/providence",
+  "documents": [
+    "docs/providence-tides.md"
+  ]
+}

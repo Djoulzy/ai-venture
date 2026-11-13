@@ -1,8 +1,8 @@
-# AI Venture — The Last Lighthouse
+# AI Venture
 
-Jeu d'aventure textuelle illustrée en anglais ou français, dans une fenêtre graphique indépendante. Les traductions et le scénario de base du phare sont embarqués dans l'exécutable ; les fichiers Providence et son catalogue source sont inclus dans le paquet. Go n'est pas nécessaire pour jouer.
+Jeu d'aventure textuelle illustrée en anglais ou français, dans une fenêtre graphique indépendante. Les traductions sont embarquées ; le scénario et le catalogue sont des fichiers externes sélectionnés par `game.json`. Go n'est pas nécessaire pour jouer.
 
-Cette archive cible le système et l'architecture indiqués dans son nom et dans `BUILD.json`. Sur macOS, double-cliquer sur **AI Venture.app** pour jouer immédiatement à **Providence — The Threshold**, en anglais et hors ligne. Ses données sont conservées dans `~/Library/Application Support/ai-venture`, hors de l'application, avec une base et des sauvegardes portant le nom `providence`.
+Cette archive cible le système et l'architecture indiqués dans son nom et dans `BUILD.json`. Sur macOS, double-cliquer sur **AI Venture.app** pour jouer à l’aventure sélectionnée par sa configuration, en anglais et hors ligne. Ses données sont conservées dans `~/Library/Application Support/ai-venture`, hors de l'application, avec une base et des sauvegardes portant l’identifiant du jeu configuré.
 
 Pour les autres systèmes ou les options LLM, extraire tout le dossier dans un emplacement accessible en écriture, puis utiliser les commandes ci-dessous. La fenêtre s'ouvre automatiquement ; ajouter `-ui terminal` pour jouer dans un terminal. Les sauvegardes et le cache SQLite sont créés dans le répertoire courant, ou dans `-data-dir dossier`. Voir [docs/window.md](docs/window.md) pour les commandes de la fenêtre. Sous Linux, un bureau X11 ou compatible XWayland et un pilote graphique sont nécessaires à la fenêtre.
 
@@ -40,12 +40,15 @@ Pour Ollama, le modèle choisi doit être déjà installé. Un serveur existant 
 Pour essayer les images composées par Go, sans modèle :
 
 ```sh
-./catalogue import -db catalogue.sqlite -source data/catalogue/providence
-./aventure -offline -lang fr -scenario scenarios/providence-fr.json -catalogue catalogue.sqlite -save savegame-providence-fr.json -visuals
+./aventure -offline -lang fr -game game.json -visuals
 ```
 
 Les PNG s'affichent dans la fenêtre et restent exportés dans `<sauvegarde>.visuals`. Avec `-ui terminal`, leurs chemins sont affichés. Voir `docs/catalogue.md`. L'exécutable `catalogue` est fourni ; utiliser `catalogue.exe` sous Windows.
 
+Pour créer une aventure depuis un pitch, utiliser `-generate -pitch "Votre idée" -catalogue catalogue.sqlite -scenario-out aventure.json` avec les options du modèle. Cette commande publie un nouveau scénario validé puis quitte ; le lancer ensuite avec `-scenario aventure.json`. Voir [docs/generation.md](docs/generation.md) pour un exemple complet. La génération ne réutilise pas le cache narratif d'une partie.
+
+- `-game /chemin/game.json` : choisir un autre contenu sans recompiler ; voir [docs/game-config.md](docs/game-config.md).
+- `-scenario /chemin/aventure.json` : charger directement un scénario externe.
 - `-lang en` ou `-lang fr` : langue de la partie.
 - `-ui window|terminal` : fenêtre indépendante par défaut, terminal en option.
 - `-data-dir dossier` : dossier des données générées (sauf chemins explicitement fournis).
@@ -72,7 +75,7 @@ shasum -a 256 -c ai-venture-VERSION-SYSTEME-ARCHITECTURE.tar.gz.sha256
 
 Sous Linux, `sha256sum -c` peut remplacer `shasum -a 256 -c`.
 
-L'application macOS contient aussi ses licences et son manifeste dans `Contents/Resources`. Elle n'est pas encore signée Developer ID ou notarisée. Pour jouer en français avec la démonstration intégrée :
+L'application macOS contient aussi ses licences et son manifeste dans `Contents/Resources`. Elle n'est pas encore signée Developer ID ou notarisée. Pour jouer en français avec le jeu configuré :
 
 ```sh
 "AI Venture.app/Contents/MacOS/aventure" -offline -lang fr

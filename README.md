@@ -1,4 +1,4 @@
-# AI Venture — The Last Lighthouse
+# AI Venture — Moteur d’aventures
 
 Prototype de jeu d'aventure textuelle en Go, en anglais ou en français, inspiré des années 1980–1990. LFM3 interprète les commandes et enrichit la narration via Ollama ou llama.cpp ; le moteur Go décide seul des changements d'état. Le jeu peut démarrer et arrêter son service d'inférence local.
 
@@ -19,7 +19,7 @@ go run ./cmd/aventure -provider llamacpp -gguf ./models/LFM3-1.7B-Q8_0.gguf -lan
 # Remplacer en par fr pour jouer en français.
 ```
 
-Le scénario embarqué propose quatre lieux, des objets transportables, une porte verrouillée et une balise à rallumer. Ses variantes sont définies dans [scenarios/lighthouse.json](scenarios/lighthouse.json) (anglais) et [scenarios/phare.json](scenarios/phare.json) (français). Un fichier fourni avec `-scenario` conserve ses propres textes et identifiants : le jeu ne le traduit pas automatiquement.
+Aucun scénario n’est embarqué dans le binaire. Le fichier externe [game.json](game.json) sélectionne actuellement **Providence — La dette de la marée**, une aventure FR/EN écrite directement par Codex à partir du catalogue. `-game autre-jeu/game.json` sélectionne un autre ensemble de contenu ; `-scenario aventure.json` charge un fichier directement. Aucun changement du code Go n’est nécessaire. Voir [le guide des jeux interchangeables](docs/game-config.md).
 
 Le catalogue **Providence** possède aussi une première scène jouable devant sa demeure coloniale, avec deux variantes FR/EN et l'image de façade. Le [guide de lancement Providence](data/catalogue/providence/README.md) explique l'import, le démarrage hors ligne ou avec un LLM, et la sauvegarde.
 
@@ -48,13 +48,14 @@ Le Makefile fournit un build Go sans CGO, avec chemins de développement retiré
 ```sh
 make                    # bin/aventure et bin/catalogue (.exe pour Windows)
 make check              # tests, détection de courses concurrentes et go vet
-make app                # build/AI Venture.app (macOS, lancement par double-clic)
+make app                # build/AI Venture.app, contenu sélectionné par game.json
+make app GAME=autre-jeu/game.json  # même moteur, autre contenu
 make dist VERSION=0.1.0  # archive complète pour la machine qui compile
 ```
 
 `make dist` compile le jeu puis le runtime llama.cpp avec le script existant. Il exige donc aussi les outils natifs décrits dans [runtime/README.md](runtime/README.md) et Python 3. Le premier lancement peut télécharger les dépendances Go, les sources llama.cpp et CMake. Les poids GGUF et les données de partie ne sont jamais copiés dans l'archive.
 
-Le résultat est `dist/ai-venture-0.1.0-darwin-arm64.tar.gz` sur un Mac ARM64, accompagné de son fichier `.sha256`. Le dossier archivé contient `aventure`, `catalogue`, `runtime/llama-server`, ses métadonnées, les scénarios et le catalogue Providence, un dossier `models/` à compléter, les licences Go/natives et un manifeste `BUILD.json`. Sur macOS, il contient aussi **AI Venture.app**, qui lance directement Providence hors ligne et conserve les données dans le dossier utilisateur. Le destinataire n'a pas besoin de Go. Le runtime utilise les bibliothèques du système cible. Le guide inclus est [docs/distribution.md](docs/distribution.md).
+Le résultat est `dist/ai-venture-0.1.0-darwin-arm64.tar.gz` sur un Mac ARM64, accompagné de son fichier `.sha256`. Le dossier archivé contient `aventure`, `catalogue`, `runtime/llama-server`, ses métadonnées, `game.json` et le contenu qu’il référence, un dossier `models/` à compléter, les licences Go/natives et un manifeste `BUILD.json`. Sur macOS, il contient aussi **AI Venture.app**, qui lance le jeu sélectionné hors ligne et conserve les données dans le dossier utilisateur. Le destinataire n'a pas besoin de Go. Le runtime utilise les bibliothèques du système cible. Le guide inclus est [docs/distribution.md](docs/distribution.md).
 
 Pour distribuer uniquement le jeu, sans compiler ni inclure llama-server :
 
@@ -68,7 +69,13 @@ Ces archives portent le suffixe `-game-only` et permettent le mode hors ligne, O
 
 `VERSION` vaut `dev` par défaut. `make help` affiche les cibles et `make clean` supprime les binaires Go et `dist/`, en conservant modèles, sauvegardes, runtime natif et cache de compilation llama.cpp.
 
-Ce mode utilise une grammaire anglaise limitée : `look`, `examine key`, `take key`, `drop key`, `go north`, `inventory`, `use key on door`. Avec `-lang fr`, utiliser `regarder`, `observer cle`, `prendre cle`, `deposer cle`, `aller nord`, `inventaire`, `utiliser cle sur porte`. Les noms complets affichés sont également reconnus. Les directions exactes affichées (`east`, `north`, `est`, `nord`, etc., selon le scénario) sont des raccourcis traités directement par Go, même en mode LLM ; les phrases comme « I head towards the workshop » sont interprétées par le modèle. Le langage naturel libre nécessite le mode LLM.
+## Commandes locales et langage libre
+
+Le mode `-offline` utilise une grammaire anglaise limitée : `look`, `examine key`, `take key`, `drop key`, `go north`, `inventory`, `use key on door`, `read <nom ou identifiant>`, `study <nom ou identifiant>`. Avec `-lang fr`, utiliser `regarder`, `observer cle`, `prendre cle`, `deposer cle`, `aller nord`, `inventaire`, `utiliser cle sur porte`, `lire <nom ou identifiant>`, `étudier <nom ou identifiant>`. Les noms complets affichés et les directions exactes sont reconnus. La lecture demande l'utilisation de l'objet sans cible ; `observer` / `examine` reste une simple observation.
+
+En mode LLM, toute saisie de jeu sans `/` est transmise telle quelle au modèle, même `lire` ou une direction seule. Aucune liste de verbes du mode hors ligne ne filtre la phrase. Vous pouvez par exemple écrire « je déchiffre les annotations du livre », « je compare le livre aux symboles du mur » ou « je me dirige vers la bibliothèque », si ces éléments sont visibles. Le modèle déduit l'objet depuis les noms et descriptions, puis propose une action au moteur. Le schéma de réponse impose les paramètres propres à chaque action et les identifiants visibles. La qualité de cette interprétation dépend du modèle choisi.
+
+Une saisie exprime une seule intention. La formulation est libre ; les effets possibles restent définis par les règles du scénario. Le modèle ne peut pas inventer un objet, créer une sortie ou contourner une précondition. Go valide possession, lieu et conditions avant toute modification. Les commandes `/...` utilisent explicitement la grammaire locale, par exemple `/lire <nom ou identifiant>` ou `/nord`. Les boutons de la fenêtre font de même. L'aide, la sauvegarde, le chargement et la sortie restent des commandes locales.
 
 ## Avec LFM3 via Ollama
 
@@ -94,12 +101,12 @@ Le tag par défaut est celui du [catalogue officiel LFM3](https://ollama.com/lib
 go run ./cmd/aventure -model lfm3:1.7b -ollama-url http://localhost:11434 -timeout 90s
 go run ./cmd/aventure -no-narration
 go run ./cmd/aventure -auto-start=false
-go run ./cmd/aventure -scenario scenarios/lighthouse.json -save ma-partie.json
+go run ./cmd/aventure -game game.json -save ma-partie.json
 go run ./cmd/aventure -load -save ma-partie.json
 go build -o bin/aventure ./cmd/aventure
 ```
 
-`OLLAMA_MODEL` et `OLLAMA_HOST` fournissent les valeurs par défaut pour le fournisseur Ollama uniquement. `OLLAMA_HOST` doit contenir une URL complète avec `http://` ou `https://`. Le scénario par défaut est embarqué dans le binaire et fonctionne depuis n'importe quel répertoire. `-no-narration` conserve l'interprétation LLM tout en évitant le deuxième appel.
+`OLLAMA_MODEL` et `OLLAMA_HOST` fournissent les valeurs par défaut pour le fournisseur Ollama uniquement. `OLLAMA_HOST` doit contenir une URL complète avec `http://` ou `https://`. Le jeu est sélectionné par une configuration externe ; ses chemins sont relatifs à son dossier. `-no-narration` conserve l'interprétation LLM tout en évitant le deuxième appel.
 
 ## Avec llama.cpp et un fichier GGUF
 
@@ -153,7 +160,12 @@ Il s'agit d'un wrapper de processus et d'un adaptateur HTTP, sans CGO. Une distr
 | `-data-dir` | dossier courant ; dossier utilisateur pour le `.app` | Dossier de sauvegardes et données générées |
 | `-color` | `auto` | Couleurs ANSI : `auto`, `always` ou `never` |
 | `-art` | `false` | Illustrations LLM des lieux, au maximum 80 colonnes et 24 lignes |
-| `-catalogue` | vide | Catalogue SQLite permanent des références du scénario |
+| `-game` | `game.json` si présent | Configuration externe du contenu et de ses variantes |
+| `-scenario` | vide | Fichier de scénario externe ; désactive la recherche automatique de configuration |
+| `-catalogue` | configuration du jeu ou vide | Catalogue SQLite permanent des références du scénario |
+| `-generate` | `false` | Générer un scénario depuis le catalogue puis quitter |
+| `-pitch` / `-scenario-out` | vides | Intention narrative et nouveau fichier JSON à créer |
+| `-seed` | `0` | Variation de génération ; 0 choisit une valeur aléatoire |
 | `-visuals` | `false` | Exporter les PNG en mode terminal ; automatique dans la fenêtre avec un scénario illustré |
 | `-visual-dir` | `<save>.visuals` | Dossier des images PNG composées |
 | `-provider` | `ollama` | Choisir `ollama` ou `llamacpp` |
@@ -165,7 +177,7 @@ Il s'agit d'un wrapper de processus et d'un adaptateur HTTP, sans CGO. Une distr
 | `-llama-bin` | Runtime local, sinon `llama-server` | Exécutable utilisé pour lancer llama.cpp |
 | `-llama-url` | `http://127.0.0.1:8080` | Racine du serveur, sans suffixe `/v1` |
 | `-gguf` | vide | Fichier local requis pour lancer llama.cpp |
-| `-llama-context` | `4096` | Contexte du serveur llama.cpp lancé par le jeu |
+| `-llama-context` | `4096` ; `8192` avec `-generate` | Contexte du serveur llama.cpp lancé par le jeu |
 
 Le lancement automatique est limité aux URL HTTP de boucle locale sans préfixe de chemin. Un serveur déjà actif, y compris en cours de chargement, est réutilisé sans être arrêté à la sortie. Un modèle absent ou un service incompatible produit une erreur avant la partie ; `-offline` permet de jouer sans inférence. Les dernières lignes du service sont conservées en mémoire, dans une limite de 8 Kio, pour diagnostiquer les erreurs de démarrage.
 
@@ -189,9 +201,23 @@ make build
   -catalogue catalogue.sqlite -save savegame-providence-fr.json -visuals
 ```
 
-Go compose fonds et sprites en PNG selon les objets présents et les conditions du scénario. La fenêtre affiche directement chaque scène et la met à jour après les actions ; le terminal affiche son chemin avec `-visuals`. Les images importées restent dans SQLite ; elles ne sont pas envoyées au LLM. Le guide [docs/catalogue.md](docs/catalogue.md) décrit les manifestes, les imports atomiques, les liens avec le RAG et le placement des calques. Cette bibliothèque ne génère pas encore de scénario automatiquement et n'ajoute pas de dialogues ou combats.
+Go compose fonds et sprites en PNG selon les objets présents et les conditions du scénario. La fenêtre affiche directement chaque scène et la met à jour après les actions ; le terminal affiche son chemin avec `-visuals`. Les images importées restent dans SQLite ; elles ne sont pas envoyées au LLM. Le guide [docs/catalogue.md](docs/catalogue.md) décrit les manifestes, les imports atomiques, les liens avec le RAG et le placement des calques.
 
-Le RAG est activé par défaut avec la narration LLM, pour Ollama comme pour llama.cpp. Le jeu crée `savegame-en.json.rag.sqlite` ou `savegame-fr.json.rag.sqlite` à côté de la sauvegarde choisie. Le dossier doit exister. Aucun modèle d'embeddings ni service supplémentaire n'est requis.
+Un **agent de création** utilise désormais ce catalogue pour composer une courte aventure à partir d'un pitch :
+
+```sh
+./bin/aventure -generate -lang fr -catalogue catalogue.sqlite \
+  -pitch "Retrouver le Necronomicon et apaiser la créature du passage souterrain de Providence." \
+  -scenario-out mon-aventure-fr.json \
+  -provider llamacpp -gguf ./models/llama-3.2-3b-instruct-q4_k_m.gguf -timeout 120s
+
+./bin/aventure -offline -lang fr -scenario mon-aventure-fr.json \
+  -catalogue catalogue.sqlite -save mon-aventure-fr.save.json
+```
+
+Le LLM propose les lieux, les placements et les interactions ; Go construit les règles, rejoue un parcours gagnant puis écrit un nouveau fichier JSON sans écrasement. Les images du catalogue sont associées automatiquement. Cette première version propose jusqu'à quatre lieux reliés et six interactions ordonnées ; les monstres et personnages sont des cibles fixes, sans système de combat. Le [guide de génération](docs/generation.md) détaille les options, les limites et l'utilisation avec Ollama.
+
+Le RAG est activé par défaut avec la narration LLM, pour Ollama comme pour llama.cpp. Le jeu crée `<sauvegarde>.rag.sqlite` à côté de la sauvegarde choisie. Le dossier doit exister. Aucun modèle d'embeddings ni service supplémentaire n'est requis.
 
 ```sh
 go run ./cmd/aventure -provider llamacpp -gguf ./models/LFM3-1.7B-Q8_0.gguf -lang fr
@@ -252,7 +278,7 @@ La génération ajoute un appel LLM de 2 048 tokens de sortie au maximum, soumis
 
 Les commandes système acceptent aussi le préfixe `/`. En mode français, les alias anglais `help`, `save`, `load` et `quit` restent disponibles.
 
-Les fichiers par défaut sont `savegame-en.json` et `savegame-fr.json`. Les variantes du scénario ont des identifiants et empreintes distincts : reprendre une partie avec la même langue. Le moteur refuse un chargement entre les deux variantes, sans modifier l'état courant. `-save` permet de choisir un autre fichier, notamment `-lang fr -load -save sauvegarde.json` pour une ancienne sauvegarde française compatible. Aucun ancien fichier n'est déplacé ni modifié automatiquement.
+Les fichiers par défaut sont `savegame-<identifiant du jeu ou scénario>-<langue>.json`. Les variantes du scénario ont des identifiants et empreintes distincts : reprendre une partie avec la même langue. Le moteur refuse un chargement entre les deux variantes, sans modifier l'état courant. `-save` permet de choisir un autre fichier, notamment `-lang fr -load -save sauvegarde.json` pour une ancienne sauvegarde française compatible. Aucun ancien fichier n'est déplacé ni modifié automatiquement.
 
 Le fichier de sauvegarde est du JSON lisible : version, identifiant du scénario, empreinte SHA-256 et état. La version 2 inclut les identifiants des documents découverts et le journal typé ; elle ne stocke aucune narration générée. Les sauvegardes v1 sont reprises si le scénario correspond exactement, ou si seuls les nouveaux documents ont été ajoutés. Les faits passés absents de la sauvegarde ne sont pas inventés ; seules les découvertes accessibles au moment de la reprise sont recalculées. Un changement des règles ou des autres champs du scénario reste incompatible. Le moteur refuse les objets manquants, positions inconnues, objets fixes déplacés, drapeaux incohérents et versions incompatibles. Un chargement échoué laisse la partie courante intacte. Une sauvegarde réussie remplace l'ancienne ; son répertoire doit déjà exister.
 
@@ -281,7 +307,10 @@ internal/terminal/   Boucle de jeu, commandes locales et affichage
 internal/presentation/ Événements structurés et lecture de commandes annulable
 internal/desktop/    Fenêtre native Ebitengine, journal, scènes et saisie
 internal/strictjson/ Décodage JSON strict aux frontières
-scenarios/           Scénario JSON embarqué
+scenarios/           Scénarios JSON externes
+game.json            Sélection du contenu, indépendante du binaire
+internal/gameconfig/ Chargement de la configuration externe
+internal/testfixtures/ Données réservées aux tests
 ```
 
 Exemple de proposition du modèle :
@@ -292,7 +321,7 @@ Exemple de proposition du modèle :
 
 Ce JSON ne contient aucun effet. Le moteur vérifie la présence de la porte, la possession de la clé, le lieu et les préconditions avant d'appliquer les effets déclarés dans le scénario. Il refuse les champs supplémentaires, propositions multiples, identifiants inaccessibles et actions inconnues. Les observations et l'inventaire ne consomment pas de tour ; les actions de mutation réussies en consomment un.
 
-Les deux adaptateurs implémentent `inference.Client` ; la gestion des processus est séparée dans `modelruntime`. Les futurs générateurs de scénarios pourront implémenter `world.Source` ; une provenance avec graine est prévue. Tous les scénarios passent par `world.Validate`, puis sont copiés dans le moteur. La validation structurelle ne prouve pas encore qu'un scénario généré est résoluble : un solveur sera nécessaire avant cette étape. Cette version ne génère pas de scénarios et ne conserve pas d'historique conversationnel.
+Les deux adaptateurs implémentent `inference.Client` ; la gestion des processus est séparée dans `modelruntime`. `generation.Source` implémente `world.Source` avec une provenance et une graine. Tous les scénarios passent par `world.Validate`, puis sont copiés dans le moteur. Pour les quêtes produites par l'agent, un parcours gagnant est en outre exécuté avec le moteur réel avant publication. Cela prouve leur résolubilité dans le périmètre pris en charge, sans garantir la qualité littéraire du modèle. Le jeu ne conserve pas d'historique conversationnel.
 
 La narration ne modifie jamais l'état et n'est pas réinjectée dans l'interpréteur. Sa conformité factuelle ne peut pas être garantie par le seul JSON Schema : les faits Go et les sorties affichées sont la référence. Les tests automatisés utilisent des réponses simulées. La qualité d’interprétation et de prose dépend du modèle et ne se déduit pas de leur réussite.
 
@@ -306,9 +335,11 @@ go vet ./...
 
 Les tests couvrent les parcours français et anglais, le choix des prompts, les erreurs localisées et leurs causes, la recherche SQLite réelle, les secrets, les branches abandonnées, les migrations v1, les règles du jeu, les refus sans mutation, les JSON invalides, la persistance, les deux protocoles HTTP et la boucle terminal. Des sous-processus de test vérifient le lancement, la disponibilité, l'arrêt gracieux, l'arrêt forcé, les descendants, l'annulation et les échecs de démarrage. Deux tests d'intégration lancent des serveurs simulés, jouent via les adaptateurs réels puis vérifient la fermeture du port. Ils ne nécessitent ni Ollama, ni llama.cpp, ni modèle, ni Internet. Le bac à sable doit autoriser les ports de boucle locale et les sous-processus.
 
+La génération est testée avec SQLite réelle et des modèles simulés : sélection par langue, budgets, références inventées, interactions impossibles, corrections bornées, préconditions ordonnées, publication sans écrasement et persistance du monde produit. Les deux fournisseurs HTTP sont couverts en français et en anglais. Un essai avec Llama 3.2 3B Q4_K_M a aussi créé deux aventures Providence, puis vérifié hors ligne leurs parcours gagnants, les PNG composés et les sauvegardes/rechargements. Les propositions invalides peuvent demander une correction ; ces essais ne garantissent pas la réussite de tous les pitchs.
+
 Les illustrations sont testées aux limites exactes de 80 colonnes et 24 lignes, avec rejet des dépassements, contrôles, Unicode et JSON non conformes. Les tests vérifient aussi le rendu avec/sans ANSI, l'absence d'affichage partiel, le cache, son invalidation et le repli après erreur. Des essais réels avec Llama 3.2 3B en anglais et LFM3-1.7B en français ont produit des dessins valides, mais graphiquement sommaires ; la validité du format ne garantit pas une illustration reconnaissable ou fidèle.
 
-Un essai manuel avec le GGUF `LFM3-1.7B-Q8_0`, llama.cpp v0.8.0 et Metal a terminé le scénario en français et en anglais : huit actions modifiant l'état, refus de la porte verrouillée, narration, sauvegarde, rechargement et arrêt du serveur possédé. Les directions exactes sont natives ; les prises et utilisations d'objets de ces parcours sont interprétées par le modèle. Cet essai ne constitue pas une comparaison générale de qualité entre langues.
+Un essai manuel antérieur avec le GGUF `LFM3-1.7B-Q8_0`, llama.cpp v0.8.0 et Metal a terminé le scénario de test en français et en anglais : huit actions modifiant l'état, refus de la porte verrouillée, narration, sauvegarde, rechargement et arrêt du serveur possédé. Les directions étaient alors des raccourcis natifs ; les prises et utilisations d'objets étaient interprétées par le modèle. Désormais, seules les directions préfixées `/` contournent l'interpréteur sélectionné. Cet essai ne constitue pas une comparaison générale de qualité entre langues.
 
 Le même parcours a été vérifié avec le RAG activé dans les deux langues : cinq documents découverts et huit événements en fin de partie, remplacement du cache par les deux documents accessibles au départ lors d'une nouvelle partie, puis reconstruction des treize entrées au rechargement de la sauvegarde. Le schéma envoyé à llama-server est placé dans `response_format.json_schema.schema` afin de contraindre effectivement la forme des réponses.
 

@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	"ai-venture/internal/testfixtures"
 	"ai-venture/internal/world"
-	"ai-venture/scenarios"
 )
 
 func TestRejectInvalidScenarios(t *testing.T) {
-	w, err := (scenarios.Demo{}).Load(context.Background())
+	w, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

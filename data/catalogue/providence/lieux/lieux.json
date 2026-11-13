@@ -30,6 +30,98 @@
             "images": [
                 "house_background"
             ]
+        },
+        {
+            "id": "providence_street",
+            "kind": "location",
+            "language": "en",
+            "title": "Providence Street",
+            "text": "Beneath a pallid moon, a cobblestone street in Providence fades into thick, oppressive mist. Ancient colonial houses, their weathered facades scarred by time, seem to watch unseen passersby through dimly lit windows. Gas lamps cast unsettling shadows upon the rain-soaked stones. In the distance, the silhouettes of forgotten buildings rise against the night, concealing secrets no rational mind would ever wish to uncover.",
+            "tags": [
+                "street",
+                "providence",
+                "1921"
+            ],
+            "images": [
+                "street_background"
+            ]
+        },
+        {
+            "id": "providence_street",
+            "kind": "location",
+            "language": "fr",
+            "title": "Ruelle de Providence",
+            "text": "Sous une lune blafarde, une rue pavée de Providence s'enfonce dans une brume épaisse et silencieuse. Les vieilles demeures coloniales, aux façades rongées par le temps, semblent épier les rares passants derrière leurs fenêtres faiblement éclairées. Les réverbères projettent des ombres inquiétantes sur les pavés humides. Au loin, les silhouettes d'édifices anciens se dressent dans la nuit, dissimulant des secrets que nul esprit raisonnable ne souhaiterait découvrir.",
+            "tags": [
+                "street",
+                "providence",
+                "1921"
+            ],
+            "images": [
+                "street_background"
+            ]
+        },
+        {
+            "id": "providence_library",
+            "kind": "location",
+            "language": "en",
+            "title": "Providence Library",
+            "text": "Beneath a troubled sky, the old Providence Library raises its monumental façade, its weathered stone columns defying the centuries. An amber glow filters through towering windows, revealing the shadows of thousands of forgotten volumes. Beyond its heavy doors lie manuscripts that should have been destroyed long ago. It is said that, on certain nights, whispers rise from the deserted halls, spoken in a language no mortal mind was ever meant to understand.",
+            "tags": [
+                "library",
+                "providence",
+                "1921"
+            ],
+            "images": [
+                "library_background"
+            ]
+        },
+        {
+            "id": "providence_library",
+            "kind": "location",
+            "language": "fr",
+            "title": "Bibliothèque de Providence",
+            "text": "Sous un ciel tourmenté, la vieille bibliothèque de Providence dresse sa façade monumentale, dont les colonnes de pierre semblent défier les siècles. Une lumière ambrée filtre à travers ses hautes fenêtres, révélant les ombres de milliers d'ouvrages oubliés. Derrière ses portes massives reposent des manuscrits dont certains auraient dû être détruits depuis longtemps. On raconte que, certaines nuits, des murmures s'élèvent des salles désertes, dans une langue qu'aucun homme ne devrait comprendre.",
+            "tags": [
+                "library",
+                "providence",
+                "1921"
+            ],
+            "images": [
+                "library_background"
+            ]
+        },
+        {
+            "id": "dark_passage",
+            "kind": "location",
+            "language": "en",
+            "title": "Dark Passage",
+            "text": "Beneath the foundations of the old colonial house stretches a forgotten underground passage, its ancient stone arches dripping with moisture. A flickering lantern illuminates dusty tomes and weathered chests, while an unnatural greenish glow seeps from the depths. Unholy symbols, seemingly carved by an inhuman hand, scar the damp walls. At the far end of the corridor, an unspeakable presence appears to linger in the darkness, forgotten by the world for centuries.",
+            "tags": [
+                "dark_passage",
+                "house",
+                "providence",
+                "1921"
+            ],
+            "images": [
+                "dark_passage"
+            ]
+        },
+        {
+            "id": "dark_passage",
+            "kind": "location",
+            "language": "fr",
+            "title": "Passage Sombre",
+            "text": "Sous les fondations de la vieille demeure coloniale s'étend un passage souterrain oublié, aux voûtes de pierre suintantes d'humidité. Une lanterne vacillante éclaire d'antiques coffres et des ouvrages couverts de poussière, tandis qu'une étrange lueur verdâtre émane des profondeurs. Sur les murs, des symboles impies semblent gravés par une main inhumaine. Au bout du corridor, une présence indicible paraît attendre dans les ténèbres, oubliée du monde depuis des siècles.",
+            "tags": [
+                "dark_passage",
+                "house",
+                "providence",
+                "1921"
+            ],
+            "images": [
+                "dark_passage"
+            ]
         }
     ],
     "assets": [
@@ -37,6 +129,24 @@
             "id": "house_background",
             "kind": "location",
             "path": "images/maison_coloniale_01_face.png",
+            "license": "AI Venture; generated by generate.go"
+        },
+        {
+            "id": "street_background",
+            "kind": "location",
+            "path": "images/rue1_640x384.png",
+            "license": "AI Venture; generated by generate.go"
+        },
+        {
+            "id": "library_background",
+            "kind": "location",
+            "path": "images/bibliotheque_640x384.png",
+            "license": "AI Venture; generated by generate.go"
+        },
+        {
+            "id": "dark_passage",
+            "kind": "location",
+            "path": "images/souterrain_640x384.png",
             "license": "AI Venture; generated by generate.go"
         }
     ]

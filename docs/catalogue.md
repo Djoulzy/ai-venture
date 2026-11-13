@@ -2,7 +2,7 @@
 
 Le catalogue conserve des fiches de lieux, personnages, monstres, objets et situations dans une base SQLite indépendante du cache RAG. Les images sont importées dans cette même base sous forme de PNG normalisés. Aucun serveur ni modèle n'est nécessaire pour importer, rechercher ou composer les images.
 
-Cette étape fournit la bibliothèque de contenu et ses références dans un scénario écrit à la main. La génération automatique d'un scénario, les dialogues de PNJ et les combats restent à ajouter. Une fiche de personnage ou de monstre ne crée pas automatiquement une entité interactive.
+Cette bibliothèque alimente les scénarios écrits à la main et l'[agent de création depuis un pitch](generation.md). Le générateur place les personnages et monstres retenus comme cibles fixes d'interactions ; les dialogues libres de PNJ et les combats restent à ajouter. L'import d'une fiche seul ne modifie aucune partie.
 
 ## Essayer l'exemple
 
@@ -20,7 +20,7 @@ make build
 
 En anglais, utiliser `-lang en -scenario scenarios/providence-en.json -save savegame-providence-en.json`. La fenêtre graphique affiche directement les scènes ; leur composition est automatique pour un scénario lié au catalogue. Les PNG sont aussi exportés au démarrage, au chargement et lorsque le jeu réaffiche un lieu après une action. Avec `-ui terminal -visuals`, seul leur chemin apparaît dans le terminal. Voir [window.md](window.md).
 
-Providence contient un lieu décrit dans les deux langues et une image de façade référencée par le catalogue. La première scène consiste à prendre une clé puis à ouvrir la porte, sans accéder encore à l'intérieur. Voir le [guide de lancement Providence](../data/catalogue/providence/README.md). Le catalogue géométrique `data/catalogue/demo` reste un exemple d'import de sprites ; ses anciens scénarios `catalogue-fr.json` et `catalogue-en.json` ont été retirés.
+Providence contient quatre lieux, le Necronomicon et un monstre, décrits en français et en anglais, avec six images référencées. Les scénarios fixes utilisent toujours uniquement la façade : prendre une clé puis ouvrir la porte, sans accéder encore à l'intérieur. Les autres fiches sont disponibles pour la génération. Voir le [guide de lancement Providence](../data/catalogue/providence/README.md). Le catalogue géométrique `data/catalogue/demo` reste un exemple d'import de sprites ; ses anciens scénarios `catalogue-fr.json` et `catalogue-en.json` ont été retirés.
 
 Pour activer la narration avec les fiches découvertes :
 
@@ -36,6 +36,8 @@ Dans une archive distribuée, utiliser `./catalogue` et `./aventure` à la place
 ## Écrire les fiches et importer les images
 
 Un fichier JSON décrit un lot. Un dossier peut contenir plusieurs lots, éventuellement dans des sous-dossiers ; l'import traite l'ensemble dans une seule transaction.
+
+Une catégorie en préparation peut contenir `{"version":1,"entries":[],"assets":[]}`. Elle est ignorée si d'autres fichiers apportent du contenu ; un import entièrement vide est refusé.
 
 ```json
 {

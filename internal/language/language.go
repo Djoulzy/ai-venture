@@ -26,7 +26,7 @@ type Narrator interface {
 }
 
 // These schemas describe the entire accepted output, not engine mutations.
-const actionSchema = `{"type":"object","additionalProperties":false,"required":["action","target","tool"],"properties":{"action":{"type":"string","enum":["observe","move","take","drop","use","inventory","unknown"]},"target":{"type":"string","maxLength":64},"tool":{"type":"string","maxLength":64}}}`
+const actionSchema = `{"type":"object","additionalProperties":false,"required":["action","tool","target"],"properties":{"action":{"type":"string","enum":["observe","move","take","drop","use","inventory","unknown"]},"tool":{"type":"string","maxLength":64},"target":{"type":"string","maxLength":64}}}`
 const narrationSchema = `{"type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string","minLength":1,"maxLength":800}}}`
 
 type LLM struct {
@@ -35,19 +35,29 @@ type LLM struct {
 }
 
 func (l LLM) Interpret(ctx context.Context, command string, view engine.View) (engine.Action, error) {
+	if err := ctx.Err(); err != nil {
+		return engine.Action{}, err
+	}
 	if strings.TrimSpace(command) == "" || len(command) > MaxCommandBytes {
 		return engine.Action{}, locale.Errorf("command is empty or too long")
 	}
+	// Preserve free-form input: the local grammar never filters LLM commands.
+	// Put the player's intention after the descriptive context so small models
+	// do not mistake instructions in location prose for the requested action.
 	payload, err := json.Marshal(struct {
-		Command string      `json:"command"`
 		View    engine.View `json:"view"`
-	}{command, view})
+		Command string      `json:"command"`
+	}{view, command})
+	if err != nil {
+		return engine.Action{}, err
+	}
+	schema, err := visibleActionSchema(view)
 	if err != nil {
 		return engine.Action{}, err
 	}
 	content, err := l.Client.Complete(ctx, inference.Request{
 		Messages: []inference.Message{{Role: "system", Content: commandPrompt(l.Language)}, {Role: "user", Content: string(payload)}},
-		Schema:   json.RawMessage(actionSchema), Temperature: 0, MaxTokens: 160,
+		Schema:   schema, Temperature: 0, MaxTokens: 160,
 	})
 	if err != nil {
 		return engine.Action{}, err
@@ -55,7 +65,8 @@ func (l LLM) Interpret(ctx context.Context, command string, view engine.View) (e
 	return DecodeAction([]byte(content))
 }
 
-// DecodeAction enforces the schema again, independently of model/provider claims.
+// DecodeAction validates the common shape independently of model/provider
+// claims. Engine.Apply checks visible references and rule preconditions.
 func DecodeAction(data []byte) (engine.Action, error) {
 	var action engine.Action
 	if len(data) > 4096 {

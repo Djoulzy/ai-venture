@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	"ai-venture/internal/testfixtures"
 	"ai-venture/internal/world"
-	"ai-venture/scenarios"
 )
 
 func TestDocumentDiscoveryDefinitionsAreValidated(t *testing.T) {
-	original, err := (scenarios.Demo{}).Load(context.Background())
+	original, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

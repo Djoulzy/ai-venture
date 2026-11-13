@@ -1,0 +1,295 @@
+{
+  "version": 1,
+  "id": "providence_la_dette_de_la_maree_fr",
+  "title": "Providence — La dette de la marée",
+  "introduction": "Providence, novembre 1921. Depuis trois nuits, vous entendez la mer au fond d'une rue qui ne mène à aucun rivage. Trois coups résonnent sous les pavés, puis une voix prononce votre nom. Le Necronomicon, conservé à la bibliothèque, décrit peut-être ce phénomène. Retrouvez-le, comprenez ce qui appelle sous la demeure coloniale et faites taire cet appel. Les lieux se visitent librement, mais l'accès au souterrain devra être ouvert.",
+  "start": "providence_street",
+  "locations": {
+    "colonial_house": {
+      "name": "Demeure coloniale",
+      "description": "Au détour d'une ruelle brumeuse de Providence se dresse une vieille demeure coloniale aux murs de bois décrépit, envahis par un lierre noirâtre. Derrière ses fenêtres obscures vacille parfois une lueur maladive, bien que la maison soit abandonnée depuis des décennies. Les arbres noueux semblent se pencher vers elle, comme pour étouffer quelque secret indicible. Une étrange impression vous saisit : quelque chose, à l'intérieur, attend votre venue.\n\nSous le perron, un escalier descend vers le passage souterrain. Un signe gravé à son entrée vibre à chaque coup venu des profondeurs ; impossible de franchir cette limite. Les traits du signe rappellent les diagrammes du Necronomicon. Le livre pourrait permettre de les interpréter sur place.",
+      "exits": {
+        "bas": {
+          "to": "dark_passage",
+          "conditions": [
+            {
+              "flag": "summons_suspended",
+              "value": true
+            }
+          ],
+          "blocked_message": "Le signe du perron vous repousse. Étudiez le Necronomicon à la bibliothèque, puis utilisez-le ici pour comprendre et suspendre l'appel."
+        },
+        "sud": {
+          "to": "providence_street"
+        }
+      }
+    },
+    "dark_passage": {
+      "name": "Passage Sombre",
+      "description": "Sous les fondations de la vieille demeure coloniale s'étend un passage souterrain oublié, aux voûtes de pierre suintantes d'humidité. Une lanterne vacillante éclaire d'antiques coffres et des ouvrages couverts de poussière, tandis qu'une étrange lueur verdâtre émane des profondeurs. Sur les murs, des symboles impies semblent gravés par une main inhumaine. Au bout du corridor, une présence indicible paraît attendre dans les ténèbres, oubliée du monde depuis des siècles.\n\nLe Profond se tient près des signes muraux, sans vous barrer le retour vers la maison. Entre deux coups, ses lèvres forment silencieusement la même phrase. Il semble attendre que quelqu'un lui adresse les mots du pacte plutôt qu'un ordre.",
+      "exits": {
+        "haut": {
+          "to": "colonial_house"
+        }
+      }
+    },
+    "providence_library": {
+      "name": "Bibliothèque de Providence",
+      "description": "Sous un ciel tourmenté, la vieille bibliothèque de Providence dresse sa façade monumentale, dont les colonnes de pierre semblent défier les siècles. Une lumière ambrée filtre à travers ses hautes fenêtres, révélant les ombres de milliers d'ouvrages oubliés. Derrière ses portes massives reposent des manuscrits dont certains auraient dû être détruits depuis longtemps. On raconte que, certaines nuits, des murmures s'élèvent des salles désertes, dans une langue qu'aucun homme ne devrait comprendre.\n\nLe Necronomicon est posé à l'écart des autres ouvrages. Une même expression revient dans ses marges : « dette de marée ». Pour en comprendre le sens, il faudra prendre le livre et l'étudier ici, au calme.",
+      "exits": {
+        "est": {
+          "to": "providence_street"
+        }
+      }
+    },
+    "providence_street": {
+      "name": "Ruelle de Providence",
+      "description": "Sous une lune blafarde, une rue pavée de Providence s'enfonce dans une brume épaisse et silencieuse. Les vieilles demeures coloniales, aux façades rongées par le temps, semblent épier les rares passants derrière leurs fenêtres faiblement éclairées. Les réverbères projettent des ombres inquiétantes sur les pavés humides. Au loin, les silhouettes d'édifices anciens se dressent dans la nuit, dissimulant des secrets que nul esprit raisonnable ne souhaiterait découvrir.\n\nUne odeur de sel monte des joints des pavés. À l'ouest se trouve la bibliothèque ; au nord, la demeure d'où semblent venir les trois coups. Le bruit ne suit ni votre marche ni votre respiration.",
+      "exits": {
+        "nord": {
+          "to": "colonial_house"
+        },
+        "ouest": {
+          "to": "providence_library"
+        }
+      }
+    }
+  },
+  "items": {
+    "book_necronomicon": {
+      "name": "Le Necronomicon",
+      "description": "Relié de cuir noirci et orné de symboles impies, le Necronomicon renferme les secrets de divinités oubliées. Ses pages jaunies murmureraient des vérités interdites, capables de faire sombrer dans la folie quiconque ose les déchiffrer. Une page cornée renvoie à un commentaire sur la dette de marée. Les notes de la bibliothèque permettraient de commencer son étude.",
+      "portable": true,
+      "location": "providence_library"
+    },
+    "monster_profond": {
+      "name": "Le Monstre des Profondeurs",
+      "description": "Créature amphibie surgie des profondeurs océaniques, le Profond possède une peau écailleuse et visqueuse, des yeux globuleux et des griffes acérées. Serviteur des divinités anciennes, il rôde dans les ténèbres, attendant l'heure où les abysses réclameront leur dû.",
+      "portable": false,
+      "location": "dark_passage"
+    }
+  },
+  "flags": {
+    "pact_read": false,
+    "pact_released": false,
+    "summons_suspended": false
+  },
+  "rules": [
+    {
+      "id": "read_pact",
+      "tool": "book_necronomicon",
+      "target": "",
+      "location": "providence_library",
+      "conditions": [
+        {
+          "flag": "pact_read",
+          "value": false
+        }
+      ],
+      "effects": {
+        "pact_read": true
+      },
+      "message": "Vous rapprochez les passages annotés. La dette de marée n'est pas une offrande : c'est un appel entretenu par celui qui prétend posséder les profondeurs. Un Profond en est le témoin contraint. Le livre distingue deux signes presque identiques, l'appel et sa suspension. Il faut maintenant comparer ces dessins au signe de la demeure coloniale.",
+      "blocked_message": "Vous avez déjà compris ce passage. Le signe de la demeure coloniale attend maintenant d'être comparé aux diagrammes du livre."
+    },
+    {
+      "id": "suspend_summons",
+      "tool": "book_necronomicon",
+      "target": "",
+      "location": "colonial_house",
+      "conditions": [
+        {
+          "flag": "pact_read",
+          "value": true
+        },
+        {
+          "flag": "summons_suspended",
+          "value": false
+        }
+      ],
+      "effects": {
+        "summons_suspended": true
+      },
+      "message": "Vous ouvrez le livre devant le signe du perron et lisez sa traduction à voix basse. La vibration cesse : l'appel est suspendu, le passage devient praticable. Une dernière clause reste à prononcer devant son témoin : « Nul nom vivant ne vous est dû. » Le livre doit rester entre vos mains pour adresser cette renonciation au Profond.",
+      "blocked_message": "Les signes n'ont de sens qu'après l'étude du livre à la bibliothèque. Si vous avez déjà levé l'interdit, descendez vers le témoin du pacte."
+    },
+    {
+      "id": "release_witness",
+      "tool": "book_necronomicon",
+      "target": "monster_profond",
+      "location": "dark_passage",
+      "conditions": [
+        {
+          "flag": "pact_read",
+          "value": true
+        },
+        {
+          "flag": "summons_suspended",
+          "value": true
+        },
+        {
+          "flag": "pact_released",
+          "value": false
+        }
+      ],
+      "effects": {
+        "pact_released": true
+      },
+      "message": "Vous présentez le livre au Profond et prononcez la clause de renonciation. Ses griffes se desserrent. Il incline la tête, toujours présent dans le passage, mais libéré de l'obligation de répondre à la maison. Les trois coups cessent. Le livre reste entre vos mains ; cette fois, les mots imprimés ne semblent plus attendre une réponse. L'appel est rompu : Providence retrouve son silence.",
+      "blocked_message": "Il faut d'abord comprendre le pacte à la bibliothèque et suspendre l'appel devant la demeure. Si la renonciation a déjà été prononcée, le pacte est rompu."
+    }
+  ],
+  "goal": [
+    {
+      "flag": "pact_released",
+      "value": true
+    }
+  ],
+  "provenance": {
+    "generator": "codex-authored-v1",
+    "seed": 0
+  },
+  "documents": [
+    {
+      "id": "chapter_read_pact",
+      "language": "fr",
+      "title": "Le commentaire des marges",
+      "text": "Vous rapprochez les passages annotés. La dette de marée n'est pas une offrande : c'est un appel entretenu par celui qui prétend posséder les profondeurs. Un Profond en est le témoin contraint. Le livre distingue deux signes presque identiques, l'appel et sa suspension. Il faut maintenant comparer ces dessins au signe de la demeure coloniale.",
+      "location": "providence_library",
+      "conditions": [
+        {
+          "flag": "pact_read",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "chapter_suspend_summons",
+      "language": "fr",
+      "title": "La dernière clause",
+      "text": "Vous ouvrez le livre devant le signe du perron et lisez sa traduction à voix basse. La vibration cesse : l'appel est suspendu, le passage devient praticable. Une dernière clause reste à prononcer devant son témoin : « Nul nom vivant ne vous est dû. » Le livre doit rester entre vos mains pour adresser cette renonciation au Profond.",
+      "location": "colonial_house",
+      "conditions": [
+        {
+          "flag": "summons_suspended",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "chapter_release_witness",
+      "language": "fr",
+      "title": "La dette levée",
+      "text": "Vous présentez le livre au Profond et prononcez la clause de renonciation. Ses griffes se desserrent. Il incline la tête, toujours présent dans le passage, mais libéré de l'obligation de répondre à la maison. Les trois coups cessent. Le livre reste entre vos mains ; cette fois, les mots imprimés ne semblent plus attendre une réponse. L'appel est rompu : Providence retrouve son silence.",
+      "location": "dark_passage",
+      "conditions": [
+        {
+          "flag": "pact_released",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "lore_providence_street",
+      "language": "fr",
+      "title": "Ruelle de Providence",
+      "text": "Sous une lune blafarde, une rue pavée de Providence s'enfonce dans une brume épaisse et silencieuse. Les vieilles demeures coloniales, aux façades rongées par le temps, semblent épier les rares passants derrière leurs fenêtres faiblement éclairées. Les réverbères projettent des ombres inquiétantes sur les pavés humides. Au loin, les silhouettes d'édifices anciens se dressent dans la nuit, dissimulant des secrets que nul esprit raisonnable ne souhaiterait découvrir.",
+      "location": "providence_street"
+    },
+    {
+      "id": "lore_providence_library",
+      "language": "fr",
+      "title": "Bibliothèque de Providence",
+      "text": "Sous un ciel tourmenté, la vieille bibliothèque de Providence dresse sa façade monumentale, dont les colonnes de pierre semblent défier les siècles. Une lumière ambrée filtre à travers ses hautes fenêtres, révélant les ombres de milliers d'ouvrages oubliés. Derrière ses portes massives reposent des manuscrits dont certains auraient dû être détruits depuis longtemps. On raconte que, certaines nuits, des murmures s'élèvent des salles désertes, dans une langue qu'aucun homme ne devrait comprendre.",
+      "location": "providence_library"
+    },
+    {
+      "id": "lore_colonial_house",
+      "language": "fr",
+      "title": "Demeure coloniale",
+      "text": "Au détour d'une ruelle brumeuse de Providence se dresse une vieille demeure coloniale aux murs de bois décrépit, envahis par un lierre noirâtre. Derrière ses fenêtres obscures vacille parfois une lueur maladive, bien que la maison soit abandonnée depuis des décennies. Les arbres noueux semblent se pencher vers elle, comme pour étouffer quelque secret indicible. Une étrange impression vous saisit : quelque chose, à l'intérieur, attend votre venue.",
+      "location": "colonial_house"
+    },
+    {
+      "id": "lore_dark_passage",
+      "language": "fr",
+      "title": "Passage Sombre",
+      "text": "Sous les fondations de la vieille demeure coloniale s'étend un passage souterrain oublié, aux voûtes de pierre suintantes d'humidité. Une lanterne vacillante éclaire d'antiques coffres et des ouvrages couverts de poussière, tandis qu'une étrange lueur verdâtre émane des profondeurs. Sur les murs, des symboles impies semblent gravés par une main inhumaine. Au bout du corridor, une présence indicible paraît attendre dans les ténèbres, oubliée du monde depuis des siècles.",
+      "location": "dark_passage"
+    },
+    {
+      "id": "lore_book_necronomicon",
+      "language": "fr",
+      "title": "Le Necronomicon",
+      "text": "Relié de cuir noirci et orné de symboles impies, le Necronomicon renferme les secrets de divinités oubliées. Ses pages jaunies murmureraient des vérités interdites, capables de faire sombrer dans la folie quiconque ose les déchiffrer.",
+      "location": "providence_library",
+      "item": "book_necronomicon"
+    },
+    {
+      "id": "lore_monster_profond",
+      "language": "fr",
+      "title": "Le Monstre des Profondeurs",
+      "text": "Créature amphibie surgie des profondeurs océaniques, le Profond possède une peau écailleuse et visqueuse, des yeux globuleux et des griffes acérées. Serviteur des divinités anciennes, il rôde dans les ténèbres, attendant l'heure où les abysses réclameront leur dû.",
+      "location": "dark_passage",
+      "item": "monster_profond"
+    }
+  ],
+  "visuals": [
+    {
+      "asset": "street_background",
+      "location": "providence_street",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "z": 0
+    },
+    {
+      "asset": "library_background",
+      "location": "providence_library",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "z": 0
+    },
+    {
+      "asset": "house_background",
+      "location": "colonial_house",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "z": 0
+    },
+    {
+      "asset": "dark_passage",
+      "location": "dark_passage",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "z": 0
+    },
+    {
+      "asset": "necronomicon_sprite",
+      "location": "providence_library",
+      "item": "book_necronomicon",
+      "x": 65,
+      "y": 67,
+      "width": 15,
+      "height": 25,
+      "z": 10
+    },
+    {
+      "asset": "profond_sprite",
+      "location": "dark_passage",
+      "item": "monster_profond",
+      "x": 8,
+      "y": 40,
+      "width": 20,
+      "height": 50,
+      "z": 10
+    }
+  ]
+}

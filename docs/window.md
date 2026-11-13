@@ -10,7 +10,7 @@ go run ./cmd/aventure -ui terminal -offline -lang fr
 
 Les options de langue et de modèle se choisissent au lancement. La fenêtre est redimensionnable ; sa taille minimale est de 1040 × 760. Elle présente la scène et ses objets à gauche, le journal déroulant à droite et la saisie en bas. La description complète reste accessible dans le journal lorsque sa légende ne suffit pas.
 
-- Entrée ou **Valider / Send** soumet la commande. La saisie accepte les accents et les commandes naturelles dans la langue choisie.
+- Entrée ou **Valider / Send** soumet la commande. En mode LLM, la saisie accepte une intention formulée librement dans la langue choisie, par exemple « je déchiffre les annotations du livre ». Les commandes `/...` utilisent la grammaire locale. Les effets restent validés par le moteur selon le scénario.
 - ↑ / ↓ parcourent les 64 dernières commandes ; Échap efface la saisie et annule le choix d'une cible. Début / Fin et ← / → déplacent le curseur.
 - Cmd+A ou Ctrl+A sélectionne toute la saisie. Cmd+V / Ctrl+V colle sous macOS ; sous Linux, `wl-paste` ou `xclip` est nécessaire. Le collage Windows reste à ajouter.
 - La molette et Page précédente / suivante font défiler le journal. L'onglet Inventaire permet d'observer, déposer ou utiliser un objet ; après **Utiliser**, choisir une cible ou compléter la commande proposée.
@@ -33,10 +33,11 @@ Seuls les calques approuvés par `Engine.View().Visuals` sont composés. Une ima
 
 ```sh
 make app                   # build/AI Venture.app, avec runtime llama-server
-make app WITH_LLAMA=0      # fenêtre et démonstration sans runtime natif
+make app WITH_LLAMA=0      # fenêtre et jeu configuré sans runtime natif
+make app GAME=autre-jeu/game.json # contenu interchangeable
 ```
 
-Double-cliquer sur **AI Venture.app** lance **Providence — The Threshold**, en anglais, hors ligne, sans terminal, sans Go et sans modèle à installer. Le catalogue est importé une seule fois dans `~/Library/Application Support/ai-venture/catalogue-providence.sqlite`. Les sauvegardes `savegame-providence-en.json` et `savegame-providence-fr.json`, ainsi que les exports, restent dans ce dossier utilisateur après déplacement de l'application. `-data-dir` permet de changer cet emplacement. L'ancienne base de démonstration est conservée séparément.
+Double-cliquer sur **AI Venture.app** lance le contenu choisi par `Contents/Resources/game.json`, en anglais et hors ligne. Le binaire ne contient aucun scénario. Le catalogue `catalogue-<id>.sqlite`, les sauvegardes `savegame-<id>-<lang>.json` et les exports restent dans `~/Library/Application Support/ai-venture`. `-data-dir` change cet emplacement. Un autre identifiant de jeu conserve les données des aventures précédentes séparées. Voir [game-config.md](game-config.md) pour remplacer le contenu sans changer Go.
 
 Pour choisir le français ou un LLM, lancer l'exécutable de l'application avec les options habituelles :
 
@@ -46,7 +47,7 @@ Pour choisir le français ou un LLM, lancer l'exécutable de l'application avec 
   -gguf "$PWD/models/llama-3.2-3b-instruct-q4_k_m.gguf"
 ```
 
-Fournir des chemins absolus pour les fichiers externes passés au `.app` (`-gguf`, `-scenario`, `-catalogue`, `-save`, etc.) : sur macOS, Ebitengine place son répertoire de travail dans `Contents/Resources` avant le démarrage. Le binaire ordinaire `bin/aventure` conserve le répertoire courant habituel.
+Fournir des chemins absolus pour les fichiers externes passés au `.app` (`-game`, `-gguf`, `-scenario`, `-catalogue`, `-save`, etc.) : sur macOS, Ebitengine place son répertoire de travail dans `Contents/Resources` avant le démarrage. Le binaire ordinaire `bin/aventure` conserve le répertoire courant habituel.
 
 Les archives macOS créées par `make dist` incluent cette application. Elle contient les exemples, ses licences et son manifeste ; les modèles et données personnelles restent exclus. Ce prototype ne possède pas encore de signature Developer ID, de notarisation ni d'installateur.
 

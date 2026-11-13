@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"ai-venture/internal/testfixtures"
 	"ai-venture/internal/world"
-	"ai-venture/scenarios"
 )
 
 func TestAuthoringReferencesAndVisualBounds(t *testing.T) {
-	base, err := (scenarios.Demo{}).Load(context.Background())
+	base, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

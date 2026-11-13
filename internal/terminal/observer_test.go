@@ -16,7 +16,7 @@ import (
 	"ai-venture/internal/locale"
 	"ai-venture/internal/presentation"
 	"ai-venture/internal/terminal"
-	"ai-venture/scenarios"
+	"ai-venture/internal/testfixtures"
 )
 
 type exportedScene string
@@ -27,7 +27,7 @@ func TestStructuredFrontendActionsSaveLoadAndVisibleSnapshots(t *testing.T) {
 	for _, lang := range []locale.Language{locale.English, locale.French} {
 		t.Run(string(lang), func(t *testing.T) {
 			ctx := context.Background()
-			w, err := (scenarios.Demo{Language: lang}).Load(ctx)
+			w, err := (testfixtures.Scenario{Language: lang}).Load(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -39,7 +39,7 @@ type Session struct {
 const help = `Game commands (examples):
   look | examine key | take key | drop key
   go north | east | up | down
-  use key on door | inventory
+  use key on door | read <item name or ID> | inventory
 Local commands: help | save | load | quit
 In LLM mode, describe your actions freely in English.
 Prefix a command with / to use the local grammar without the LLM.
@@ -249,16 +249,7 @@ func (s *Session) Run(ctx context.Context) error {
 		}
 		interpreter := s.Interpreter
 		view := s.Engine.View()
-		// Exact exit names are native shortcuts, including the French "est".
-		// Natural-language movement still uses the selected interpreter.
-		direction := false
-		for _, exit := range view.Exits {
-			if language.Normalize(line) == exit.Direction {
-				direction = true
-				break
-			}
-		}
-		if local || direction {
+		if local {
 			interpreter = language.Offline{Language: s.Engine.Language()}
 		}
 		actionCtx, cancel := context.WithTimeout(ctx, s.Timeout)

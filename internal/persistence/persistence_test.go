@@ -10,12 +10,12 @@ import (
 
 	"ai-venture/internal/engine"
 	"ai-venture/internal/persistence"
-	"ai-venture/scenarios"
+	"ai-venture/internal/testfixtures"
 )
 
 func game(t *testing.T) *engine.Engine {
 	t.Helper()
-	w, err := (scenarios.Demo{}).Load(context.Background())
+	w, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestScenarioFingerprintIncludesRules(t *testing.T) {
 	if err := persistence.Save(path, e); err != nil {
 		t.Fatal(err)
 	}
-	w, err := (scenarios.Demo{}).Load(context.Background())
+	w, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestScenarioFingerprintIncludesRules(t *testing.T) {
 }
 
 func TestLegacySaveLoadsWithoutInventedHistory(t *testing.T) {
-	w, err := (scenarios.Demo{}).Load(context.Background())
+	w, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

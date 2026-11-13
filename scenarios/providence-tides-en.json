@@ -1,0 +1,295 @@
+{
+  "version": 1,
+  "id": "providence_the_tides_debt_en",
+  "title": "Providence — The Tide's Debt",
+  "introduction": "Providence, November 1921. For three nights you have heard the sea beneath a street that leads to no shore. Three knocks sound under the cobbles, then a voice speaks your name. The Necronomicon, kept in the library, may explain the disturbance. Find it, discover what calls beneath the colonial house, and silence that call. You can explore the streets freely, but must open the way underground.",
+  "start": "providence_street",
+  "locations": {
+    "colonial_house": {
+      "name": "Colonial house",
+      "description": "At the end of a mist-shrouded lane in Providence stands an ancient colonial house, its decaying wooden walls strangled by blackened ivy. A sickly glow occasionally flickers behind its darkened windows, though the house has stood abandoned for decades. Gnarled trees lean towards its walls, as if concealing some unspeakable secret. An unsettling feeling takes hold of you: something within has been awaiting your arrival.\n\nBeneath the porch, steps lead down to an underground passage. A sign carved at the entrance trembles with each knock from below; you cannot cross its boundary. Its lines resemble diagrams in the Necronomicon. The book may help you interpret them here.",
+      "exits": {
+        "down": {
+          "to": "dark_passage",
+          "conditions": [
+            {
+              "flag": "summons_suspended",
+              "value": true
+            }
+          ],
+          "blocked_message": "The sign on the porch drives you back. Study the Necronomicon in the library, then use it here to understand and suspend the summons."
+        },
+        "south": {
+          "to": "providence_street"
+        }
+      }
+    },
+    "dark_passage": {
+      "name": "Dark Passage",
+      "description": "Beneath the foundations of the old colonial house stretches a forgotten underground passage, its ancient stone arches dripping with moisture. A flickering lantern illuminates dusty tomes and weathered chests, while an unnatural greenish glow seeps from the depths. Unholy symbols, seemingly carved by an inhuman hand, scar the damp walls. At the far end of the corridor, an unspeakable presence appears to linger in the darkness, forgotten by the world for centuries.\n\nThe Deep One stands beside the markings, leaving the way back to the house clear. Between knocks, its lips silently form the same phrase. It seems to await the words of a pact, spoken to it rather than used as a command.",
+      "exits": {
+        "up": {
+          "to": "colonial_house"
+        }
+      }
+    },
+    "providence_library": {
+      "name": "Providence Library",
+      "description": "Beneath a troubled sky, the old Providence Library raises its monumental façade, its weathered stone columns defying the centuries. An amber glow filters through towering windows, revealing the shadows of thousands of forgotten volumes. Beyond its heavy doors lie manuscripts that should have been destroyed long ago. It is said that, on certain nights, whispers rise from the deserted halls, spoken in a language no mortal mind was ever meant to understand.\n\nThe Necronomicon rests apart from the other volumes. One expression recurs in its margins: 'the tide's debt'. Take the book and study it here, in the quiet, to understand what it means.",
+      "exits": {
+        "east": {
+          "to": "providence_street"
+        }
+      }
+    },
+    "providence_street": {
+      "name": "Providence Street",
+      "description": "Beneath a pallid moon, a cobblestone street in Providence fades into thick, oppressive mist. Ancient colonial houses, their weathered facades scarred by time, seem to watch unseen passersby through dimly lit windows. Gas lamps cast unsettling shadows upon the rain-soaked stones. In the distance, the silhouettes of forgotten buildings rise against the night, concealing secrets no rational mind would ever wish to uncover.\n\nSalt rises from the joints between the cobbles. The library lies to the west; the house from which the three knocks seem to come stands to the north. The sound follows neither your footsteps nor your breathing.",
+      "exits": {
+        "north": {
+          "to": "colonial_house"
+        },
+        "west": {
+          "to": "providence_library"
+        }
+      }
+    }
+  },
+  "items": {
+    "book_necronomicon": {
+      "name": "The Necronomicon",
+      "description": "Bound in darkened leather and adorned with unholy symbols, the Necronomicon holds the secrets of forgotten gods. Its yellowed pages whisper forbidden truths, capable of driving anyone who dares decipher them into madness. A folded page points to a commentary on the tide's debt. The library's notes offer a place to begin its study.",
+      "portable": true,
+      "location": "providence_library"
+    },
+    "monster_profond": {
+      "name": "The Deep Monster",
+      "description": "An amphibious creature from the ocean depths, the Deep One bears slimy, scaly skin, bulging eyes, and razor-sharp claws. Servant of the Ancient Ones, it lurks in darkness, awaiting the hour when the abyss shall claim its due.",
+      "portable": false,
+      "location": "dark_passage"
+    }
+  },
+  "flags": {
+    "pact_read": false,
+    "pact_released": false,
+    "summons_suspended": false
+  },
+  "rules": [
+    {
+      "id": "read_pact",
+      "tool": "book_necronomicon",
+      "target": "",
+      "location": "providence_library",
+      "conditions": [
+        {
+          "flag": "pact_read",
+          "value": false
+        }
+      ],
+      "effects": {
+        "pact_read": true
+      },
+      "message": "You compare the annotated passages. The tide's debt is no offering: it is a summons maintained by someone claiming dominion over the depths. A Deep One is its unwilling witness. The book distinguishes two almost identical signs: the summons and its suspension. Compare these drawings with the sign at the colonial house.",
+      "blocked_message": "You have already understood this passage. Compare the book's diagrams with the sign at the colonial house next."
+    },
+    {
+      "id": "suspend_summons",
+      "tool": "book_necronomicon",
+      "target": "",
+      "location": "colonial_house",
+      "conditions": [
+        {
+          "flag": "pact_read",
+          "value": true
+        },
+        {
+          "flag": "summons_suspended",
+          "value": false
+        }
+      ],
+      "effects": {
+        "summons_suspended": true
+      },
+      "message": "You open the book before the sign on the porch and quietly read its translation. The trembling stops: the summons is suspended and the passage can be entered. One final clause must be spoken before its witness: 'No living name is owed to you.' Keep the book in hand and address that renunciation to the Deep One.",
+      "blocked_message": "The signs make sense only after studying the book in the library. If you have already lifted the barrier, descend to the witness of the pact."
+    },
+    {
+      "id": "release_witness",
+      "tool": "book_necronomicon",
+      "target": "monster_profond",
+      "location": "dark_passage",
+      "conditions": [
+        {
+          "flag": "pact_read",
+          "value": true
+        },
+        {
+          "flag": "summons_suspended",
+          "value": true
+        },
+        {
+          "flag": "pact_released",
+          "value": false
+        }
+      ],
+      "effects": {
+        "pact_released": true
+      },
+      "message": "You present the book to the Deep One and speak the renunciation. Its claws relax. It bows its head, remaining in the passage but released from its duty to answer the house. The three knocks cease. The book stays in your hands; this time its printed words no longer seem to await a reply. The summons is broken. Providence falls silent.",
+      "blocked_message": "First understand the pact in the library and suspend the summons at the house. If the renunciation has already been spoken, the pact is broken."
+    }
+  ],
+  "goal": [
+    {
+      "flag": "pact_released",
+      "value": true
+    }
+  ],
+  "provenance": {
+    "generator": "codex-authored-v1",
+    "seed": 0
+  },
+  "documents": [
+    {
+      "id": "chapter_read_pact",
+      "language": "en",
+      "title": "The marginal commentary",
+      "text": "You compare the annotated passages. The tide's debt is no offering: it is a summons maintained by someone claiming dominion over the depths. A Deep One is its unwilling witness. The book distinguishes two almost identical signs: the summons and its suspension. Compare these drawings with the sign at the colonial house.",
+      "location": "providence_library",
+      "conditions": [
+        {
+          "flag": "pact_read",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "chapter_suspend_summons",
+      "language": "en",
+      "title": "The final clause",
+      "text": "You open the book before the sign on the porch and quietly read its translation. The trembling stops: the summons is suspended and the passage can be entered. One final clause must be spoken before its witness: 'No living name is owed to you.' Keep the book in hand and address that renunciation to the Deep One.",
+      "location": "colonial_house",
+      "conditions": [
+        {
+          "flag": "summons_suspended",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "chapter_release_witness",
+      "language": "en",
+      "title": "The debt released",
+      "text": "You present the book to the Deep One and speak the renunciation. Its claws relax. It bows its head, remaining in the passage but released from its duty to answer the house. The three knocks cease. The book stays in your hands; this time its printed words no longer seem to await a reply. The summons is broken. Providence falls silent.",
+      "location": "dark_passage",
+      "conditions": [
+        {
+          "flag": "pact_released",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "lore_providence_street",
+      "language": "en",
+      "title": "Providence Street",
+      "text": "Beneath a pallid moon, a cobblestone street in Providence fades into thick, oppressive mist. Ancient colonial houses, their weathered facades scarred by time, seem to watch unseen passersby through dimly lit windows. Gas lamps cast unsettling shadows upon the rain-soaked stones. In the distance, the silhouettes of forgotten buildings rise against the night, concealing secrets no rational mind would ever wish to uncover.",
+      "location": "providence_street"
+    },
+    {
+      "id": "lore_providence_library",
+      "language": "en",
+      "title": "Providence Library",
+      "text": "Beneath a troubled sky, the old Providence Library raises its monumental façade, its weathered stone columns defying the centuries. An amber glow filters through towering windows, revealing the shadows of thousands of forgotten volumes. Beyond its heavy doors lie manuscripts that should have been destroyed long ago. It is said that, on certain nights, whispers rise from the deserted halls, spoken in a language no mortal mind was ever meant to understand.",
+      "location": "providence_library"
+    },
+    {
+      "id": "lore_colonial_house",
+      "language": "en",
+      "title": "Colonial house",
+      "text": "At the end of a mist-shrouded lane in Providence stands an ancient colonial house, its decaying wooden walls strangled by blackened ivy. A sickly glow occasionally flickers behind its darkened windows, though the house has stood abandoned for decades. Gnarled trees lean towards its walls, as if concealing some unspeakable secret. An unsettling feeling takes hold of you: something within has been awaiting your arrival.",
+      "location": "colonial_house"
+    },
+    {
+      "id": "lore_dark_passage",
+      "language": "en",
+      "title": "Dark Passage",
+      "text": "Beneath the foundations of the old colonial house stretches a forgotten underground passage, its ancient stone arches dripping with moisture. A flickering lantern illuminates dusty tomes and weathered chests, while an unnatural greenish glow seeps from the depths. Unholy symbols, seemingly carved by an inhuman hand, scar the damp walls. At the far end of the corridor, an unspeakable presence appears to linger in the darkness, forgotten by the world for centuries.",
+      "location": "dark_passage"
+    },
+    {
+      "id": "lore_book_necronomicon",
+      "language": "en",
+      "title": "The Necronomicon",
+      "text": "Bound in darkened leather and adorned with unholy symbols, the Necronomicon holds the secrets of forgotten gods. Its yellowed pages whisper forbidden truths, capable of driving anyone who dares decipher them into madness.",
+      "location": "providence_library",
+      "item": "book_necronomicon"
+    },
+    {
+      "id": "lore_monster_profond",
+      "language": "en",
+      "title": "The Deep Monster",
+      "text": "An amphibious creature from the ocean depths, the Deep One bears slimy, scaly skin, bulging eyes, and razor-sharp claws. Servant of the Ancient Ones, it lurks in darkness, awaiting the hour when the abyss shall claim its due.",
+      "location": "dark_passage",
+      "item": "monster_profond"
+    }
+  ],
+  "visuals": [
+    {
+      "asset": "street_background",
+      "location": "providence_street",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "z": 0
+    },
+    {
+      "asset": "library_background",
+      "location": "providence_library",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "z": 0
+    },
+    {
+      "asset": "house_background",
+      "location": "colonial_house",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "z": 0
+    },
+    {
+      "asset": "dark_passage",
+      "location": "dark_passage",
+      "x": 0,
+      "y": 0,
+      "width": 100,
+      "height": 100,
+      "z": 0
+    },
+    {
+      "asset": "necronomicon_sprite",
+      "location": "providence_library",
+      "item": "book_necronomicon",
+      "x": 65,
+      "y": 67,
+      "width": 15,
+      "height": 25,
+      "z": 10
+    },
+    {
+      "asset": "profond_sprite",
+      "location": "dark_passage",
+      "item": "monster_profond",
+      "x": 8,
+      "y": 40,
+      "width": 20,
+      "height": 50,
+      "z": 10
+    }
+  ]
+}

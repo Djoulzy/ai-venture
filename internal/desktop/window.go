@@ -498,7 +498,7 @@ func (g *window) Draw(screen *ebiten.Image) {
 			label += " ×"
 		}
 		direction := exit.Direction
-		g.addButton(screen, image.Rect(x, exitY, x+width, exitY+33), label, ready && !exit.Blocked, func() { g.submit(direction) })
+		g.addButton(screen, image.Rect(x, exitY, x+width, exitY+33), label, ready && !exit.Blocked, func() { g.submit("/" + direction) })
 	}
 	g.drawItems(screen, image.Rect(left.Min.X+16, exitY+47, left.Max.X-16, left.Max.Y-12), ready)
 	g.drawLog(screen, right)

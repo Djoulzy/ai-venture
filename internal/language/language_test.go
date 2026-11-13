@@ -12,7 +12,7 @@ import (
 	"ai-venture/internal/inference"
 	"ai-venture/internal/language"
 	"ai-venture/internal/locale"
-	"ai-venture/scenarios"
+	"ai-venture/internal/testfixtures"
 )
 
 type fakeClient struct {
@@ -53,7 +53,7 @@ func TestActionJSONValidation(t *testing.T) {
 }
 
 func TestInterpreterOnlySeesVisibleWorld(t *testing.T) {
-	w, err := (scenarios.Demo{}).Load(context.Background())
+	w, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func FuzzActionJSON(f *testing.F) {
 }
 
 func TestFrenchGrammarAndPrompts(t *testing.T) {
-	w, err := (scenarios.Demo{Language: locale.French}).Load(context.Background())
+	w, err := (testfixtures.Scenario{Language: locale.French}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestFrenchGrammarAndPrompts(t *testing.T) {
 	if err != nil || a.Target != "cle" {
 		t.Fatalf("%+v %v", a, err)
 	}
-	if !strings.Contains(fake.request.Messages[0].Content, "commandes françaises") || !strings.Contains(fake.request.Messages[1].Content, "clé de cuivre") {
+	if !strings.Contains(fake.request.Messages[0].Content, "en français") || !strings.Contains(fake.request.Messages[1].Content, "clé de cuivre") {
 		t.Fatal("French interpreter context missing")
 	}
 	result, err := e.Apply(a)

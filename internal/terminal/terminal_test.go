@@ -16,12 +16,12 @@ import (
 	"ai-venture/internal/locale"
 	"ai-venture/internal/persistence"
 	"ai-venture/internal/terminal"
-	"ai-venture/scenarios"
+	"ai-venture/internal/testfixtures"
 )
 
 func game(t *testing.T) *engine.Engine {
 	t.Helper()
-	w, err := (scenarios.Demo{}).Load(context.Background())
+	w, err := (testfixtures.Scenario{}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestTerminalStripsEscapeSequences(t *testing.T) {
 }
 
 func TestFrenchSessionSaveLoadAndVictory(t *testing.T) {
-	w, err := (scenarios.Demo{Language: locale.French}).Load(context.Background())
+	w, err := (testfixtures.Scenario{Language: locale.French}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestFrenchSessionSaveLoadAndVictory(t *testing.T) {
 }
 
 func TestFrenchInferenceFailureCanRecoverLocally(t *testing.T) {
-	w, err := (scenarios.Demo{Language: locale.French}).Load(context.Background())
+	w, err := (testfixtures.Scenario{Language: locale.French}).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,33 +235,42 @@ func TestFrenchInferenceFailureCanRecoverLocally(t *testing.T) {
 	}
 }
 
-func TestExactDirectionsBypassLLMInBothLanguages(t *testing.T) {
+func TestGameCommandsReachLLMUnlessExplicitlyLocal(t *testing.T) {
 	for _, entry := range []struct {
-		language locale.Language
-		commands string
-		location string
+		language  locale.Language
+		direction string
+		phrase    string
+		location  string
 	}{
-		{locale.English, "east\n/quit\n", "workshop"},
-		{locale.French, "est\n/quitter\n", "atelier"},
+		{locale.English, "east", "I make my way towards the workshop.", "workshop"},
+		{locale.French, "est", "Je me dirige vers l'atelier.", "atelier"},
 	} {
 		t.Run(string(entry.language), func(t *testing.T) {
-			w, err := (scenarios.Demo{Language: entry.language}).Load(context.Background())
+			w, err := (testfixtures.Scenario{Language: entry.language}).Load(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
-			e, err := engine.NewWithLanguage(w, entry.language)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var out bytes.Buffer
-			s := session(t, e, entry.commands, &out)
-			fake := &scriptedClient{}
-			s.Interpreter = language.LLM{Client: fake, Language: entry.language}
-			if err := s.Run(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-			if fake.calls != 0 || e.Snapshot().Location != entry.location || e.Snapshot().Turn != 1 {
-				t.Fatalf("native direction failed: %+v", e.Snapshot())
+			for _, command := range []string{entry.direction, entry.phrase, "/" + entry.direction} {
+				t.Run(command, func(t *testing.T) {
+					e, err := engine.NewWithLanguage(w, entry.language)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var out bytes.Buffer
+					s := session(t, e, command+"\n/quit\n", &out)
+					fake := &scriptedClient{responses: []string{`{"action":"move","target":"` + entry.direction + `","tool":""}`}}
+					s.Interpreter = language.LLM{Client: fake, Language: entry.language}
+					if err := s.Run(context.Background()); err != nil {
+						t.Fatal(err)
+					}
+					wantCalls := 1
+					if strings.HasPrefix(command, "/") {
+						wantCalls = 0
+					}
+					if fake.calls != wantCalls || e.Snapshot().Location != entry.location || e.Snapshot().Turn != 1 {
+						t.Fatalf("calls=%d, want %d; state=%+v", fake.calls, wantCalls, e.Snapshot())
+					}
+				})
 			}
 		})
 	}
